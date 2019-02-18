@@ -1484,10 +1484,11 @@ FlowDirector::load_rules_from_file_to_string(const String &filename)
  *
  * @args rules_map: a map of global rule IDs to their rules
  * @args by_controller: boolean flag that denotes that rule installation is driven by a controller (defaults to true)
+ * @args core_id: the core related to the rules
  * @return the number of flow rules being installed/updated, otherwise a negative integer
  */
 int32_t
-FlowDirector::update_rules(const HashMap<long, String> &rules_map, bool by_controller, int core_id)
+FlowDirector::update_rules(const HashMap<long, String> &rules_map, bool by_controller, int core_id_b)
 {
     uint32_t rules_to_install = rules_map.size();
     if (rules_to_install == 0) {
@@ -1519,9 +1520,9 @@ FlowDirector::update_rules(const HashMap<long, String> &rules_map, bool by_contr
             it++;
             continue;
         }
-
+        int core_id = core_id_b;
         // Parse the queue index to infer the CPU core
-        if (core_id < 0) {
+        if (core_id_b < 0) {
             String queue_index_str = fetch_token_after_keyword((char *) rule.c_str(), "queue index");
             core_id = atoi(queue_index_str.c_str());
         }
@@ -1536,13 +1537,10 @@ FlowDirector::update_rules(const HashMap<long, String> &rules_map, bool by_contr
         } else {
             int_rule_id = (uint32_t) rule_id;
         }
-
-        if (_verbose) {
-            _errh->message(
+/*            _errh->message(
                 "Flow Director (port %u): About to install rule with global ID %ld and internal ID %" PRIu32 " on core %d: %s",
                 _port_id, rule_id, int_rule_id, core_id, rule.c_str()
-            );
-        }
+            );*/
 
         // Update the flow cache
         if (!_flow_cache->update_rule_in_flow_cache(core_id, rule_id, int_rule_id, rule)) {
