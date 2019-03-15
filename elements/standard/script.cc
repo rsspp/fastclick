@@ -824,6 +824,7 @@ Script::arithmetic_handler(int, String &str, Element *, const Handler *h, ErrorH
 #if CLICK_USERLEVEL
     double daccum = (what == ar_add || what == ar_sub ? 0 : 1), darg;
     bool use_daccum = (what == ar_div || what == ar_idiv);
+    int naccum = 0;
 #endif
     while (1) {
         String word = cp_shift_spacevec(str);
@@ -834,6 +835,7 @@ Script::arithmetic_handler(int, String &str, Element *, const Handler *h, ErrorH
             use_daccum = true;
             daccum = accum;
         }
+        naccum ++;
         if (use_daccum && !DoubleArg().parse(word, darg))
             return errh->error("expected list of numbers");
         if (use_daccum) {
@@ -841,6 +843,12 @@ Script::arithmetic_handler(int, String &str, Element *, const Handler *h, ErrorH
                 daccum = darg;
             else if (what == ar_add)
                 daccum += darg;
+            else if (what == ar_avg)
+                daccum += darg;
+            else if (what == ar_count)
+                daccum += 1;
+            else if (what == ar_popcount)
+                daccum += (abs(arg) < 0.0000001d ? 1 : 0);
             else if (what == ar_sub)
                 daccum -= darg;
             else if (what == ar_min)
@@ -861,6 +869,12 @@ Script::arithmetic_handler(int, String &str, Element *, const Handler *h, ErrorH
             accum = arg;
         else if (what == ar_add)
             accum += arg;
+        else if (what == ar_avg)
+            accum += arg;
+        else if (what == ar_count)
+            accum += 1;
+        else if (what == ar_popcount)
+            accum += (arg != 0 ? 1 : 0);
         else if (what == ar_sub)
             accum -= arg;
         else if (what == ar_min)
@@ -895,7 +909,13 @@ Script::arithmetic_handler(int, String &str, Element *, const Handler *h, ErrorH
         first = false;
     }
 #if CLICK_USERLEVEL
-    if (what == ar_idiv) {
+    if (what == ar_avg) {
+        if (use_daccum)
+            daccum /= naccum;
+        else
+            accum /= naccum;
+
+    } else if (what == ar_idiv) {
         use_daccum = false;
         accum = (click_intmax_t) daccum;
     }
@@ -1317,6 +1337,9 @@ Script::add_handlers()
     set_handler("sub", Handler::f_read | Handler::f_read_param, arithmetic_handler, ar_sub, 0);
     set_handler("min", Handler::f_read | Handler::f_read_param, arithmetic_handler, ar_min, 0);
     set_handler("max", Handler::f_read | Handler::f_read_param, arithmetic_handler, ar_max, 0);
+    set_handler("avg", Handler::f_read | Handler::f_read_param, arithmetic_handler, ar_avg, 0);
+    set_handler("count", Handler::f_read | Handler::f_read_param, arithmetic_handler, ar_count, 0);
+    set_handler("popcount", Handler::f_read | Handler::f_read_param, arithmetic_handler, ar_popcount, 0);
     set_handler("mul", Handler::f_read | Handler::f_read_param, arithmetic_handler, ar_mul, 0);
     set_handler("div", Handler::f_read | Handler::f_read_param, arithmetic_handler, ar_div, 0);
     set_handler("idiv", Handler::f_read | Handler::f_read_param, arithmetic_handler, ar_idiv, 0);

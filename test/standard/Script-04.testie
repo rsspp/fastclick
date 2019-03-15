@@ -4,6 +4,9 @@ click CONFIG
 %file CONFIG
 s0 :: Script(
    print $(add 1 2 3),
+   print $(avg 1 2 3),
+   print $(count 1 0 3),
+   print $(popcount 1 0 3),
    print $(sub 10 2 2),
    print $(min 10 6 20),
    print $(max -1 6 3),
@@ -20,6 +23,9 @@ s0 :: Script(
 
 %expect stdout
 6
+2
+3
+2
 6
 6
 6
