@@ -74,8 +74,7 @@ int DPDKDevice::set_rss_max(int max)
 	struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
     struct rte_eth_dev_info dev_info;
 
-    rte_eth_dev_info_get(port_id, &dev_info);
-    uint16_t reta_size = dev_info.reta_size;
+    uint16_t reta_size = get_reta_size();
 	uint32_t i;
 	int status;
 	/* RETA setting */
@@ -94,6 +93,64 @@ int DPDKDevice::set_rss_max(int max)
 			reta_conf,
 			reta_size);
 	return status;
+}
+
+int DPDKDevice::set_rss_reta(const Vector<unsigned> &reta)
+{
+	struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
+    struct rte_eth_dev_info dev_info;
+
+	uint32_t i;
+	int status;
+	/* RETA setting */
+	memset(reta_conf, 0, sizeof(reta_conf));
+    for (i = 0; i < reta.size(); i++) {
+			reta_conf[i / RTE_RETA_GROUP_SIZE].mask = UINT64_MAX;
+    }
+	for (i = 0; i < reta.size(); i++) {
+			uint32_t reta_id = i / RTE_RETA_GROUP_SIZE;
+			uint32_t reta_pos = i % RTE_RETA_GROUP_SIZE;
+			reta_conf[reta_id].reta[reta_pos] = reta[i];
+	}
+	/* RETA update */
+	status = rte_eth_dev_rss_reta_update(port_id,
+			reta_conf,
+			reta.size());
+	return status;
+}
+
+
+int DPDKDevice::get_reta_size() const {
+	struct rte_eth_dev_info dev_info;
+
+	rte_eth_dev_info_get(port_id, &dev_info);
+	int reta_size = dev_info.reta_size;
+	return reta_size;
+}
+
+Vector<unsigned>
+DPDKDevice::get_rss_reta() const
+{
+	struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
+    uint16_t reta_size = get_reta_size();
+
+    Vector<unsigned> list;
+    list.reserve(reta_size);
+
+    int status = rte_eth_dev_rss_reta_query(port_id, reta_conf, ETH_RSS_RETA_SIZE_512);
+    if (status != 0) {
+	return list;
+    }
+
+	for (int i = 0; i < reta_size; i++) {
+			uint32_t reta_id = i / RTE_RETA_GROUP_SIZE;
+			uint32_t reta_pos = i % RTE_RETA_GROUP_SIZE;
+
+			int core_id = reta_conf[reta_id].reta[reta_pos];
+			list.push_back(core_id);
+	}
+
+	return list;
 }
 
 #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)

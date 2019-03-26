@@ -153,6 +153,9 @@ public:
     uint16_t get_device_id();
     const char *get_device_driver();
     int set_rss_max(int max);
+    int set_rss_reta(const Vector<unsigned> &reta);
+    int get_reta_size() const;
+    Vector<unsigned>  get_rss_reta() const;
 
     static unsigned int dev_count() {
 #if RTE_VERSION >= RTE_VERSION_NUM(18,05,0,0)

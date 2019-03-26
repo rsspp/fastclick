@@ -441,6 +441,15 @@ String FromDPDKDevice::read_handler(Element *e, void * thunk)
             return fd->_dev->get_device_vendor_name();
         case h_driver:
             return String(fd->_dev->get_device_driver());
+        case h_rss_reta_size:
+		return String(fd->_dev->get_reta_size());
+        case h_rss_reta:
+		StringAccum acc;
+		Vector<unsigned> list = fd->_dev->get_rss_reta();
+		for (int i= 0; i < list.size(); i++) {
+			acc << list[i] << " ";
+		}
+		return acc.take_string();
     }
 
     return 0;
@@ -718,6 +727,7 @@ int FromDPDKDevice::xstats_handler(
                     acc << i << " = " << v << "\n";
                 }
                 input = acc.take_string();
+                return 0;
             } else {
                 int v = rte_eth_rx_queue_count(fd->_dev->get_port_id(), atoi(input.c_str()));
                 input = String(v);
@@ -811,6 +821,8 @@ void FromDPDKDevice::add_handlers()
     add_read_handler("vf_mac_addr",read_handler, h_vf_mac);
 
     add_write_handler("max_rss", write_handler, h_rss, 0);
+    add_read_handler("rss_reta",read_handler, h_rss_reta);
+    add_read_handler("rss_reta_size",read_handler, h_rss_reta_size);
 
     add_read_handler("hw_count",statistics_handler, h_ipackets);
     add_read_handler("hw_bytes",statistics_handler, h_ibytes);

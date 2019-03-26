@@ -215,7 +215,7 @@ private:
         h_active, h_safe_active,
         h_xstats, h_queue_count,
         h_nb_rx_queues, h_nb_tx_queues, h_nb_vf_pools,
-        h_rss,
+        h_rss, h_rss_reta, h_rss_reta_size,
         h_mac, h_add_mac, h_remove_mac, h_vf_mac,
         h_mtu,
         h_device,
