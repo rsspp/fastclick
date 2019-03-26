@@ -7,6 +7,7 @@ s0 :: Script(
    print $(avg 1 2 3),
    print $(count 1 0 3),
    print $(popcount 1 0 3),
+   print $(popcount 0.01 0.32 0),
    print $(sub 10 2 2),
    print $(min 10 6 20),
    print $(max -1 6 3),
@@ -25,6 +26,7 @@ s0 :: Script(
 6
 2
 3
+2
 2
 6
 6

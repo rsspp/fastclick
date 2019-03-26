@@ -28,6 +28,8 @@
 #include <click/straccum.hh>
 #include <click/handlercall.hh>
 #include <click/nameinfo.hh>
+#include <float.h>
+#include <math.h>
 #if CLICK_USERLEVEL
 # include <signal.h>
 # include <click/master.hh>
@@ -819,10 +821,10 @@ Script::arithmetic_handler(int, String &str, Element *, const Handler *h, ErrorH
 {
     int what = (uintptr_t) h->read_user_data();
 
-    click_intmax_t accum = (what == ar_add || what == ar_sub ? 0 : 1), arg;
+    click_intmax_t accum = (what == ar_add || what == ar_sub || what == ar_count || what == ar_popcount ? 0 : 1), arg;
     bool first = true;
 #if CLICK_USERLEVEL
-    double daccum = (what == ar_add || what == ar_sub ? 0 : 1), darg;
+    double daccum = (what == ar_add || what == ar_sub || what == ar_count || what == ar_popcount ? 0 : 1), darg;
     bool use_daccum = (what == ar_div || what == ar_idiv);
     int naccum = 0;
 #endif
@@ -839,7 +841,7 @@ Script::arithmetic_handler(int, String &str, Element *, const Handler *h, ErrorH
         if (use_daccum && !DoubleArg().parse(word, darg))
             return errh->error("expected list of numbers");
         if (use_daccum) {
-            if (first)
+            if (first && what != ar_popcount && what != ar_count)
                 daccum = darg;
             else if (what == ar_add)
                 daccum += darg;
@@ -847,9 +849,9 @@ Script::arithmetic_handler(int, String &str, Element *, const Handler *h, ErrorH
                 daccum += darg;
             else if (what == ar_count)
                 daccum += 1;
-            else if (what == ar_popcount)
-                daccum += (abs(arg) < 0.0000001d ? 1 : 0);
-            else if (what == ar_sub)
+            else if (what == ar_popcount) {
+                daccum += (abs(darg) > 0.00001f ? 1 : 0);
+            } else if (what == ar_sub)
                 daccum -= darg;
             else if (what == ar_min)
                 daccum = (daccum < darg ? daccum : darg);
@@ -865,7 +867,7 @@ Script::arithmetic_handler(int, String &str, Element *, const Handler *h, ErrorH
         if (!IntArg().parse(word, arg))
             return errh->error("expected list of numbers");
 #endif
-        if (first)
+        if (first && what != ar_popcount && what != ar_count)
             accum = arg;
         else if (what == ar_add)
             accum += arg;
@@ -873,9 +875,9 @@ Script::arithmetic_handler(int, String &str, Element *, const Handler *h, ErrorH
             accum += arg;
         else if (what == ar_count)
             accum += 1;
-        else if (what == ar_popcount)
+        else if (what == ar_popcount) {
             accum += (arg != 0 ? 1 : 0);
-        else if (what == ar_sub)
+        } else if (what == ar_sub)
             accum -= arg;
         else if (what == ar_min)
             accum = (accum < arg ? accum : arg);
@@ -910,10 +912,17 @@ Script::arithmetic_handler(int, String &str, Element *, const Handler *h, ErrorH
     }
 #if CLICK_USERLEVEL
     if (what == ar_avg) {
-        if (use_daccum)
-            daccum /= naccum;
-        else
-            accum /= naccum;
+        if (naccum == 0) {
+            if (use_daccum)
+                daccum = NAN;
+            else
+                accum = INT_MAX;
+        } else {
+            if (use_daccum)
+                daccum /= naccum;
+            else
+                accum /= naccum;
+        }
 
     } else if (what == ar_idiv) {
         use_daccum = false;
