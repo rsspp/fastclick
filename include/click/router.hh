@@ -73,6 +73,8 @@ class Router { public:
     static void add_read_handler(const Element *e, const String &hname, ReadHandlerCallback callback, void *user_data, uint32_t flags = 0);
     static void add_write_handler(const Element *e, const String &hname, WriteHandlerCallback callback, void *user_data, uint32_t flags = 0);
     static void set_handler(const Element *e, const String &hname, uint32_t flags, HandlerCallback callback, void *read_user_data = 0, void *write_user_data = 0);
+    static int router_handler(int operation, String &data, Element *e,
+			       const Handler *handler, ErrorHandler *errh);
     static int set_handler_flags(const Element *e, const String &hname, uint32_t set_flags, uint32_t clear_flags = 0);
 
     enum { FIRST_GLOBAL_HANDLER = 0x40000000 };

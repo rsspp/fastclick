@@ -2280,7 +2280,7 @@ Router::configuration_string() const
     }
 }
 
-enum { GH_VERSION, GH_CONFIG, GH_FLATCONFIG, GH_LIST, GH_LOAD, GH_REQUIREMENTS,
+enum { GH_VERSION, GH_CONFIG, GH_FLATCONFIG, GH_LIST, GH_LOAD, GH_LOAD_CYCLES, GH_USEFUL_CYCLES, GH_REQUIREMENTS,
        GH_DRIVER, GH_ACTIVE_PORTS, GH_ACTIVE_PORT_STATS, GH_STRING_PROFILE,
        GH_STRING_PROFILE_LONG, GH_SCHEDULING_PROFILE, GH_STOP,
        GH_ELEMENT_CYCLES, GH_CLASS_CYCLES, GH_RESET_CYCLES };
@@ -2291,6 +2291,48 @@ struct stats_info {
     uint32_t task_calls, timer_calls, xfer_calls, nelements;
 };
 #endif
+
+
+int
+Router::router_handler(int operation, String &data, Element *e,
+			       const Handler *handler, ErrorHandler *errh) {
+    Router *r = (e ? e->router() : 0);
+    StringAccum sa;
+    int opt = reinterpret_cast<intptr_t>(handler->_read_user_data);
+    switch (opt) {
+ #if HAVE_CLICK_LOAD
+      case GH_LOAD:
+      case GH_LOAD_CYCLES:
+      case GH_USEFUL_CYCLES:
+          {
+        int index;
+        IntArg arg;
+        if (data && arg.parse(data, index, errh)) {
+            sa << r->master()->thread(index)->load();
+        } else {
+            int n = r->master()->nthreads();
+            for (int i = 0; i < n; i++) {
+                if (opt == GH_LOAD) {
+                    float l = r->master()->thread(i)->load();
+                    sa << (l == 0 ? "0" : String(r->master()->thread(i)->load()));
+                } else if (opt == GH_LOAD_CYCLES)
+                    sa << String(r->master()->thread(i)->load_cycles());
+                else
+                    sa << String(r->master()->thread(i)->useful_kcycles());
+                if (i < n - 1)
+                    sa << " ";
+            }
+        }
+        break;
+        }
+#endif
+        default:
+          data = "<error>";
+          return -1;
+    }
+    data = sa.take_string();
+    return 0;
+}
 
 String
 Router::router_read_handler(Element *e, void *thunk)
@@ -2319,16 +2361,6 @@ Router::router_read_handler(Element *e, void *thunk)
                 sa << r->_element_names[i] << "\n";
         }
         break;
-#if HAVE_CLICK_LOAD
-      case GH_LOAD: {
-        int n = r->master()->nthreads();
-        for (int i = 0; i < n; i++) {
-            sa << r->master()->thread(i)->load();;
-            if (i < n - 1)
-                sa << " ";
-        }
-        break; }
-#endif
       case GH_REQUIREMENTS:
         if (r)
             for (int i = 0; i < r->_requirements.size(); i++)
@@ -2524,7 +2556,9 @@ Router::static_initialize()
         add_read_handler(0, "handlers", Element::read_handlers_handler, 0);
         add_read_handler(0, "list", router_read_handler, (void *)GH_LIST);
 #if HAVE_CLICK_LOAD
-        add_read_handler(0, "load", router_read_handler, (void *)GH_LOAD);
+        set_handler(0, "load", Handler::h_read | Handler::f_read_param, router_handler, (void *)GH_LOAD, (void *)0);
+        set_handler(0, "load_cycles", Handler::h_read | Handler::f_read_param, router_handler, (void *)GH_LOAD_CYCLES, (void *)0);
+        set_handler(0, "useful_kcycles", Handler::h_read | Handler::f_read_param, router_handler, (void *)GH_USEFUL_CYCLES, (void *)0);
 #endif
         add_write_handler(0, "stop", router_write_handler, (void *)GH_STOP);
 #if CLICK_STATS >= 1
