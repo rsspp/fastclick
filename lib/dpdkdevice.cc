@@ -132,13 +132,17 @@ Vector<unsigned>
 DPDKDevice::get_rss_reta() const
 {
 	struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
+	memset(reta_conf, 0xff, RETA_CONF_SIZE * sizeof(struct rte_eth_rss_reta_entry64));
     uint16_t reta_size = get_reta_size();
+
+    assert(reta_size > 0);
 
     Vector<unsigned> list;
     list.reserve(reta_size);
 
-    int status = rte_eth_dev_rss_reta_query(port_id, reta_conf, ETH_RSS_RETA_SIZE_512);
+    int status = rte_eth_dev_rss_reta_query(port_id, reta_conf, reta_size);
     if (status != 0) {
+	click_chatter("Could not query RETA for port %d (size %d) ! Error %d",port_id, reta_size, status);
 	return list;
     }
 
@@ -317,6 +321,7 @@ int DPDKDevice::alloc_pktmbufs(ErrorHandler* errh)
         }
     }
 
+    click_chatter("RETA size %d",get_reta_size());
     return 0;
 }
 
@@ -394,6 +399,7 @@ int DPDKDevice::set_mode(
     } else if ((mode == "rss") || (mode == "")) {
 #endif
         m = ETH_MQ_RX_RSS;
+        click_chatter("Mode is RSS !");
         if (mode == "")
             mode = "rss";
     } else if (mode == "vmdq") {
@@ -495,6 +501,7 @@ int DPDKDevice::initialize_device(ErrorHandler *errh)
 #endif
 
     info.mq_mode = (info.mq_mode == -1? ETH_MQ_RX_RSS : info.mq_mode);
+    click_chatter("Final mode is %d",info.mq_mode);
     dev_conf.rxmode.mq_mode = info.mq_mode;
 #if RTE_VERSION < RTE_VERSION_NUM(18,8,0,0)
     dev_conf.rxmode.hw_vlan_filter = 0;
@@ -541,6 +548,8 @@ int DPDKDevice::initialize_device(ErrorHandler *errh)
     }
 
     if (info.mq_mode & ETH_MQ_RX_RSS_FLAG) {
+	click_chatter("Configuring RSS");
+
         dev_conf.rx_adv_conf.rss_conf.rss_key = NULL;
         dev_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | ETH_RSS_UDP | ETH_RSS_TCP;
         dev_conf.rx_adv_conf.rss_conf.rss_hf &= dev_info.flow_type_rss_offloads;

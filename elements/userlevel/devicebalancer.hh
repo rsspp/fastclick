@@ -38,7 +38,7 @@ class BalanceMethod { public:
 
     virtual int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
     virtual void rebalance(Vector<Pair<int,float>> load) = 0;
-    virtual int initialize(ErrorHandler *errh, int startwith) = 0;
+    virtual int initialize(ErrorHandler *errh, int startwith);
 protected:
 
     DeviceBalancer* balancer;
@@ -70,10 +70,37 @@ private:
     String _rules_file;
 };
 
+class BalanceMethodRSS : public BalanceMethodDPDK { public:
 
-class MethodPianoRSS : public BalanceMethodDPDK, public LoadTracker { public:
+    BalanceMethodRSS(DeviceBalancer* b, Element* fd) : BalanceMethodDPDK(b,fd) {
+    }
+    int initialize(ErrorHandler *errh, int startwith) override;
 
-    MethodPianoRSS(DeviceBalancer* b, Element* fd, String config) : BalanceMethodDPDK(b,fd) {
+    void rebalance(Vector<Pair<int,float>> load) override;
+    Vector<unsigned> _table;
+
+    struct rte_eth_rss_conf _rss_conf;
+    Vector<rte_flow*> _flows;
+
+    bool update_reta_flow(bool validate = false);
+    void update_reta(bool validate = false);
+protected:
+    bool _update_reta_flow;
+};
+
+
+class MethodRSSRR : public BalanceMethodRSS { public:
+
+    MethodRSSRR(DeviceBalancer* b, Element* fd) : BalanceMethodRSS(b,fd) {
+    }
+
+    void rebalance(Vector<Pair<int,float>> load) override;
+};
+
+
+class MethodPianoRSS : public BalanceMethodRSS, public LoadTracker { public:
+
+    MethodPianoRSS(DeviceBalancer* b, Element* fd, String config) : BalanceMethodRSS(b,fd) {
     }
 
     int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
@@ -83,8 +110,6 @@ class MethodPianoRSS : public BalanceMethodDPDK, public LoadTracker { public:
 private:
 
     AggregateCounterVector* _counter;
-    Vector<unsigned> _table;
-    Vector<rte_flow*> _flows;
     float _target_load;
 };
 
@@ -125,6 +150,7 @@ public:
     target_method _target;
     load_method _load;
     int _startwith;
+    bool _autoscale;
 
     bool _verbose;
 
@@ -133,6 +159,8 @@ public:
 	unsigned long long last_cycles;
     };
     CpuInfo make_info(int _id);
+	int addCore();
+	void removeCore(int phys_id);
 
     Vector<CpuInfo> _used_cpus;
     Vector<int> _available_cpus;

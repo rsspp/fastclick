@@ -381,6 +381,23 @@ ToDPDKDevice* FromDPDKDevice::findOutputElement() {
     return 0;
 }
 
+enum {
+        h_vendor, h_driver, h_carrier, h_duplex, h_autoneg, h_speed, h_type,
+        h_ipackets, h_ibytes, h_imissed, h_ierrors, h_nombufs,
+        h_active, h_safe_active,
+        h_xstats, h_queue_count, h_stats_packets, h_stats_bytes,
+        h_nb_rx_queues, h_nb_tx_queues, h_nb_vf_pools,
+        h_rss, h_rss_reta, h_rss_reta_size,
+        h_mac, h_add_mac, h_remove_mac, h_vf_mac,
+        h_mtu,
+        h_device,
+    #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
+        h_rule_add, h_rules_del, h_rules_flush,
+        h_rules_list, h_rules_ids_global, h_rules_ids_internal, h_rules_count,
+        h_rule_packet_hits, h_rule_byte_count, h_rules_aggr_stats
+    #endif
+};
+
 String FromDPDKDevice::read_handler(Element *e, void * thunk)
 {
     FromDPDKDevice *fd = static_cast<FromDPDKDevice *>(e);
@@ -680,8 +697,8 @@ int FromDPDKDevice::xstats_handler(
     FromDPDKDevice *fd = static_cast<FromDPDKDevice *>(e);
     if (!fd->_dev)
         return -1;
-
-    switch ((intptr_t)handler->read_user_data()) {
+    int op = (intptr_t)handler->read_user_data();
+    switch (op) {
         case h_xstats: {
             struct rte_eth_xstat_name *names;
         #if RTE_VERSION >= RTE_VERSION_NUM(16,07,0,0)
@@ -762,6 +779,25 @@ int FromDPDKDevice::xstats_handler(
             return 0;
         }
     #endif
+        case h_stats_packets:
+        case h_stats_bytes:
+            {
+                struct rte_eth_stats stats;
+                if (rte_eth_stats_get(fd->_dev->port_id, &stats))
+                        return -1;
+
+                    int id = atoi(input.c_str());
+                if (id < 0 || id > RTE_ETHDEV_QUEUE_STAT_CNTRS)
+                        return -EINVAL;
+                uint64_t v;
+                if (op == h_stats_packets)
+                         v = stats.q_ipackets[id];
+                else
+                         v = stats.q_opackets[id];
+                input = String(v);
+                return 0;
+            }
+        break;
     }
 
     return -1;
@@ -793,6 +829,9 @@ void FromDPDKDevice::add_handlers()
 
     set_handler("xstats", Handler::f_read | Handler::f_read_param, xstats_handler, h_xstats);
     set_handler("queue_count", Handler::f_read | Handler::f_read_param, xstats_handler, h_queue_count);
+    set_handler("queue_packets", Handler::f_read | Handler::f_read_param, xstats_handler, h_stats_packets);
+    set_handler("queue_bytes", Handler::f_read | Handler::f_read_param, xstats_handler, h_stats_bytes);
+
 #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
     set_handler(FlowDirector::FLOW_RULE_PACKET_HITS, Handler::f_read | Handler::f_read_param, xstats_handler, h_rule_packet_hits);
     set_handler(FlowDirector::FLOW_RULE_BYTE_COUNT,  Handler::f_read | Handler::f_read_param, xstats_handler, h_rule_byte_count);
