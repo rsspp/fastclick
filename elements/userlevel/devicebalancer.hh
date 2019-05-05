@@ -111,6 +111,7 @@ private:
 
     AggregateCounterVector* _counter;
     float _target_load;
+    float _imbalance_alpha;
 };
 
 /*

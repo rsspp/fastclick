@@ -470,7 +470,6 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 */
     Timestamp begin = Timestamp::now_steady();
     const float _threshold = 0.02; //Do not scale core underloaded or overloaded by this threshold
-    float _imbalance_alpha = 3.0f/3.0f; //Percentage of imbalance to consider
     float _min_load = 0.15;
     float _threshold_force_overload = 0.90;
     float _load_alpha = 1;
@@ -506,8 +505,8 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
         if (abs(diff) <= _threshold)
 		diff = 0;
         if (load[j].load > _high_load_threshold) {
-		has_high_load = true;
-		load[j].high = true;
+			has_high_load = true;
+			load[j].high = true;
         }
         map_phys_to_id[load[j].cpu_phys_id] = j;
 
@@ -520,7 +519,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     p.target = totalload / (float)p.N;
 
     if (unlikely(balancer->_verbose))
-	click_chatter("Target %f. Total load %f. %d cores", p.target, totalload, p.N);
+	click_chatter("Target %f. Total load %f. %d cores. Suppload %f", p.target, totalload, p.N, suppload);
 
     p.imbalance.resize(p.N);
 
@@ -536,7 +535,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
      * diminish the imbalance already
      */
     if (balancer->_autoscale) {
-        if (suppload > 1.1 && p.N > 1) { // we can remove a core
+        if (suppload < -0.1 && p.N > 1) { // we can remove a core
             if (unlikely(balancer->_verbose)) {
                 click_chatter("Removing a core");
             }
@@ -585,7 +584,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 
         } else if (suppload < -0.1) { //We need a new core because the total load even with perfect spred incurs 10% overload
             if (unlikely(balancer->_verbose))
-                click_chatter("Adding a core");
+                click_chatter("Adding a core as load is %f");
             int a_phys_id = balancer->addCore();
             p.imbalance.resize(p.imbalance.size() + 1);
             p.N = p.N+1;
@@ -910,6 +909,7 @@ int MethodPianoRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
 	if (Args(balancer, errh).bind(conf)
 			.read("LOAD", t)
 			.read("RSSCOUNTER", e)
+			.read_or_set("IMBALANCE_ALPHA", _imbalance_alpha, 1)
 			.consume() < 0)
 		return -1;
 	_target_load = t;
