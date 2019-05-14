@@ -70,12 +70,14 @@ private:
     String _rules_file;
 };
 
+class RSSVerifier;
+
 class BalanceMethodRSS : public BalanceMethodDPDK { public:
 
-    BalanceMethodRSS(DeviceBalancer* b, Element* fd) : BalanceMethodDPDK(b,fd) {
+    BalanceMethodRSS(DeviceBalancer* b, Element* fd) : BalanceMethodDPDK(b,fd), _verifier(0) {
     }
-    int initialize(ErrorHandler *errh, int startwith) override;
-
+    int initialize(ErrorHandler *errh, int startwith) override CLICK_COLD;
+    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     void rebalance(Vector<Pair<int,float>> load) override;
     Vector<unsigned> _table;
 
@@ -86,7 +88,9 @@ class BalanceMethodRSS : public BalanceMethodDPDK { public:
     void update_reta(bool validate = false);
 protected:
     bool _update_reta_flow;
+    RSSVerifier* _verifier;
 };
+
 
 
 class MethodRSSRR : public BalanceMethodRSS { public:
@@ -110,6 +114,7 @@ class MethodPianoRSS : public BalanceMethodRSS, public LoadTracker { public:
 private:
 
     AggregateCounterVector* _counter;
+
     float _target_load;
     float _imbalance_alpha;
 };

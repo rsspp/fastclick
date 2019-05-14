@@ -321,7 +321,6 @@ int DPDKDevice::alloc_pktmbufs(ErrorHandler* errh)
         }
     }
 
-    click_chatter("RETA size %d",get_reta_size());
     return 0;
 }
 

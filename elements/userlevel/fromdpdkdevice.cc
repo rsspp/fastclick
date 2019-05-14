@@ -573,6 +573,26 @@ int FromDPDKDevice::write_handler(
             }
             return 0;
         }
+        /*case h_add_fdir_mac: {
+            EtherAddress mac;
+            int queue = 0;
+            int ret;
+            if (!EtherAddressArg().parse(input, mac)) {
+                return errh->error("Invalid MAC address %s",input.c_str());
+            }
+
+		struct rte_eth_fdir_filter entry;
+		entry.soft_id = i;
+		entry.input.flow_type = RTE_ETH_FILTER_MACVLAN;
+		entry.input.flow.mac_vlan_flow.mac_addr = mac;
+		entry.input.flow_ext.is_vf = 0;
+		entry.input.flow_ext.vlan_tci = 0;
+		entry.action.rx_queue = queue;
+		entry.action.behavior = RTE_ETH_FDIR_ACCEPT;
+		entry.action.report_status = RTE_ETH_FDIR_REPORT_ID;
+
+		ret = rte_eth_dev_filter_ctrl(portid, RTE_ETH_FILTER_FDIR,RTE_ETH_FILTER_ADD, &entry);
+        }*/
         case h_safe_active:
         case h_active: {
             bool active;
