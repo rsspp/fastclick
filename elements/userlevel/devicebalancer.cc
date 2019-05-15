@@ -688,8 +688,8 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 					buckets_indexes.push_back(j);
 				}
 			}
-          if (_unlikely(_verbose))
-			click_chatter("Removing %d buckets of core %d", buckets_indexes.size(), min_core);
+			if (unlikely(balancer->_verbose))
+				click_chatter("Removing %d buckets of core %d", buckets_indexes.size(), min_core);
 
 
             BucketMapProblem cp(buckets_indexes.size(), load.size());
@@ -807,6 +807,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
      * We minimize the overall imbalance by moving some buckets from each cores to other cores
      */
     if (p.oid.size() > 0) {
+	bool moved = false;
 		float min_cost = p.N * p.N;
 		p.transfer.resize(p.N);
 		for (unsigned i = 0; i < p.N; i++) {
@@ -919,6 +920,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 				tot_bpc += bpc;
 				//click_chatter("Bucket %d var %f, load %f, imbalance %f",j, var, bload,p.imbalance[i]);
 
+				moved = true;
 				_table[j] = load[p.transfer[i]].cpu_phys_id;
 
 				p.imbalance[i] += bload;
@@ -940,7 +942,8 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 		}
 		Timestamp t = Timestamp::now_steady();
 		click_chatter("Solution computed in %d usec", (t-begin).usecval());
-        update_reta();
+		if (moved)
+			update_reta();
    }
     assert(_counter);
     _counter->advance_epoch();
