@@ -6,6 +6,7 @@
 #include <click/timer.hh>
 #include <click/notifier.hh>
 #include <click/fromfile.hh>
+#include <click/tinyexpr.hh>
 
 CLICK_DECLS
 class HandlerCall;
