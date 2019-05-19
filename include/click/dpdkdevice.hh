@@ -75,9 +75,12 @@ public:
     struct DevInfo {
         inline DevInfo() :
             vendor_id(PCI_ANY_ID), vendor_name(), device_id(PCI_ANY_ID), driver(0),
-            rx_queues(0,false), tx_queues(0,false), promisc(false), n_rx_descs(0),
-            n_tx_descs(0), mq_mode((enum rte_eth_rx_mq_mode)-1), mq_mode_str(""),
-            num_pools(0), vf_vlan(), vlan_filter(false), vlan_strip(false),
+            rx_queues(0,false), tx_queues(0,false),
+            n_rx_descs(0), n_tx_descs(0),
+            promisc(false),
+            num_pools(0), vf_vlan(),
+            vlan_filter(false), vlan_strip(false),
+            mq_mode((enum rte_eth_rx_mq_mode)-1), mq_mode_str(""),
             init_mac(), init_mtu(0), init_rss(-1), init_fc_mode(FC_UNSET) {
             rx_queues.reserve(128);
             tx_queues.reserve(128);
@@ -104,15 +107,15 @@ public:
         const char *driver;
         Vector<bool> rx_queues;
         Vector<bool> tx_queues;
-        bool promisc;
-        bool vlan_filter;
-        bool vlan_strip;
         unsigned n_rx_descs;
         unsigned n_tx_descs;
+        bool promisc;
+        Vector<int> vf_vlan;
+        bool vlan_filter;
+        bool vlan_strip;
         enum rte_eth_rx_mq_mode mq_mode;
         String mq_mode_str;
         int num_pools;
-        Vector<int> vf_vlan;
         EtherAddress init_mac;
         uint16_t init_mtu;
         int init_rss;

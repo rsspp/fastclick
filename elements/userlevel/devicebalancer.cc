@@ -57,7 +57,7 @@ int BalanceMethod::configure(Vector<String> &, ErrorHandler *)  {
 
 
 int BalanceMethod::initialize(ErrorHandler *errh, int startwith) {
-        return 0;
+    return 0;
 };
 
 
@@ -102,6 +102,9 @@ int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
         return errh->error("Flow director is not active.");
     }
 
+
+    _fd->get_device()->set_rss_max(startwith);
+
     load_tracker_initialize(errh);
 
     auto cache = flow_dir->get_flow_cache();
@@ -113,6 +116,17 @@ int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
         return errh->error("Cache error !");
 
     return 0;
+}
+
+
+int MethodMetron::configure(Vector<String> &conf, ErrorHandler *errh)  {
+	if (Args(balancer, errh).bind(conf)
+			.read_or_set("MIN_MOVEMENT", _min_movement, 3)
+			.read_or_set("DEFLATION_FACTOR", _deflation_factor, 2)
+			.consume() < 0)
+		return -1;
+
+	return 0;
 }
 
 void MethodMetron::rebalance(Vector<Pair<int,float>> load) {
@@ -130,7 +144,7 @@ void MethodMetron::rebalance(Vector<Pair<int,float>> load) {
         _past_load[cpuid] = load_current;
 
         click_chatter("Load of core %d : %f. Past : %f, Future : %f, Last movement : %f (seconds)", cpuid, load_current, load_past, load_future, (float)(now - _last_movement[cpuid]) / CLICK_HZ);
-        if (now - _last_movement[cpuid] < CLICK_HZ * 3)
+        if (now - _last_movement[cpuid] < CLICK_HZ * _min_movement)
             continue;
         if (load_future > balancer->_overloaded_thresh || load_current > balancer->_overloaded_thresh) {
             overloaded.push_back(Pair<int,float>{cpuid,load_current});
@@ -152,10 +166,10 @@ void MethodMetron::rebalance(Vector<Pair<int,float>> load) {
         overloaded.pop_back();
         int a_phys_id;
         float load_a = 0;
-        if (balancer->_available_cpus.size() > 0) {
+        if (balancer->_autoscale && balancer->_available_cpus.size() > 0) {
             a_phys_id = balancer->addCore();
         } else if (underloaded.size() > 0) {
-		a_phys_id = underloaded.back().first;
+		    a_phys_id = underloaded.back().first;
             load_a = underloaded.back().second;
 
             underloaded.pop_back();
@@ -178,7 +192,15 @@ void MethodMetron::rebalance(Vector<Pair<int,float>> load) {
 
         HashMap<long, String> * rmap;
         rmap = cache->rules_map_by_core_id(o);
-        int mig = rmap->size() * ((load_o - load_a) / 2.0);
+        int mig;
+        if (_deflation_factor == 0) {
+            mig = rmap->size() * ((load_o - load_a) / 2.0);
+        } else {
+            mig = rmap->size() / _deflation_factor;
+        }
+
+        if (mig == 0)
+            mig = 1;
         //click_chatter("Rmap %p", rmap);
         click_chatter("Migrating %d flows / %d flows", mig , rmap->size());
 
@@ -215,7 +237,7 @@ void MethodMetron::rebalance(Vector<Pair<int,float>> load) {
 
     }
 
-    while (underloaded.size() >= 2 && balancer->_target != TARGET_BALANCE) {
+    while (underloaded.size() >= 2 && balancer->_autoscale) {
         int remove_i = underloaded[underloaded.size() - 2].first;
         int with_i = underloaded[underloaded.size() - 1].first;
         click_chatter("Removing underloaded CPU %d!", remove_i);
@@ -243,7 +265,7 @@ void MethodMetron::rebalance(Vector<Pair<int,float>> load) {
 
         rmap = cache->rules_map_by_core_id(remove_i);
 //        click_chatter("Rmap %p", rmap);
-        click_chatter("Migrating %d flows", rmap->size());
+        click_chatter("Migrating %d flows to core %d", rmap->size(), with_i);
 //      flow_dir->flow_cache()->delete_rule_by_global_id(rmap.keys());
 //      flow_dir->flow_cache()->
 
@@ -601,7 +623,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 */
     Timestamp begin = Timestamp::now_steady();
     const float _threshold = 0.02; //Do not scale core underloaded or overloaded by this threshold
-    float _min_load = 0.15;
+    float _min_load = 0.01;
     float _threshold_force_overload = 0.90;
     float _load_alpha = 1;
     //float _high_load_threshold = 0.;
@@ -759,7 +781,8 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
      * We move the bucket that have more load than XXX 50% to other cores
      */
     if (has_high_load) {
-	click_chatter("Has high load !");
+	if (unlikely(balancer->_verbose))
+		click_chatter("Has high load !");
 		for (int j = 0; j < _table.size(); j++) {
 			unsigned long long c = _counter->find_node(j).count;
 			unsigned phys_id = _table[j];
@@ -767,9 +790,9 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 			if (!load[id].high || load[id].npackets == 0)
 				continue;
 			unsigned long long pc = (c * 1024) / load[id].npackets;
-			float l = pc * (load[id].load);
-			if (l > 512) {
-				click_chatter("Bucket %d (cpu id %d) is a dancer ! %f%% of the load", j, id, (float)(l) / 1024 );
+			float l = ((float)pc / 1024.0) * (load[id].load);
+			if (l > 0.5) {
+				click_chatter("Bucket %d (cpu id %d) is a dancer ! %f%% of the load", j, id, (float)(l));
 				float min_load = 1;
 				int least = -1;
 				for (int i = 0; i < load.size(); i++) {
@@ -779,6 +802,9 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 					}
 				}
 				click_chatter("Moving to %d", least);
+
+                //We fix the load here. So the next step of the algo will rebalance the other flows
+                // as if nothing happened
 				load[least].load += l;
 				load[id].load -= l;
 				_table[j] = load[least].cpu_phys_id;
@@ -852,10 +878,10 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 					j = 0;
 				if (map_phys_to_id[_table[j]] == i) {
 
-					double c = _counter->find_node(j).count;
-					double p = _counter->find_node(j).variance;
-					core_tot += c;
-					//double mean = (c + p) / 2;
+					uint64_t cu = _counter->find_node(j).count;
+					core_tot += cu;
+                    double c = cu;
+                    double p = _counter->find_node(j).variance;
 					double var;
 					double m = max(c,p);
 					if (m == 0) {
@@ -882,7 +908,11 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 			 * - Not overflow the imbalance
 			 */
 			bool miss = false;
-			assert(core_tot_min > 0);
+			if (!q.empty())
+                if (core_tot_min == 0) {
+                    click_chatter("WARNING : Core has not seen any packet... But has %f load.", load[i].load);
+                    continue;
+                }
 			while (!q.empty()) {
 				int j = q.back().first;
 				float var = q.back().second;
@@ -894,14 +924,14 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
                 //click_chatter("ctm %f bpc %f, load %f",core_tot_min,bpc,load[i].load);
 				assert( bpc != NAN);
 				double bload =  bpc * load[i].load; //How much CPU load this bucket represents
-				if (bload > -p.imbalance[i] * fT[i] ) { //Never over balance!
+				if (bload > -p.imbalance[i] * fT[i] || bload > 0.5 ) { //Never over balance! Also dancers are handled separately
 					//if (bload > _threshold)
 					if (!miss) {
-                        if (unlikely(balancer->_verbose))
-						click_chatter("Trying to fill %f of imbalance", p.imbalance[i]*fT[i]);
+                        //if (unlikely(balancer->_verbose))
+						//click_chatter("Trying to fill %f of imbalance", p.imbalance[i]*fT[i]);
 						miss =true;
 					}
-					if (unlikely(balancer->_verbose)) {
+					if (unlikely(balancer->_verbose > 1)) {
 						click_chatter("Skipping bucket %d var %f, load %f%% (min %f%% of bucket, %f%% real), imbalance %f, at least %d flows",j, var, bload*100, bpc*100, ((c * 100.0)/core_tot),p.imbalance[i]*fT[i],_counter->find_node(j).flows);
                     }
                         /*
@@ -933,17 +963,22 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 			}
 			if (unlikely(balancer->_verbose))
 				click_chatter("Moving %d/%d/%d buckets (%f%% of load, %f%% of buckets). Core has seen %llu packets.", n, qsz, cn,  tot_bload *100, tot_bpc*100, core_tot);
-		}
-		for (unsigned i =0; i < p.N;i ++) {
+		} //For each cores
+
+        for (unsigned i =0; i < p.N;i ++) {
 			if (abs(p.imbalance[i]) > _threshold) {
 				if (unlikely(balancer->_verbose))
 					click_chatter("Imbalance of core %d left to %f, that's quite a MISS.", i, p.imbalance[i]);
 			}
 		}
-		Timestamp t = Timestamp::now_steady();
-		click_chatter("Solution computed in %d usec", (t-begin).usecval());
-		if (moved)
+
+		if (moved) {
+			Timestamp t = Timestamp::now_steady();
+			auto v = (t-begin).usecval();
+			if (unlikely(balancer->_verbose || v > 100))
+				click_chatter("Solution computed in %d usec", v);
 			update_reta();
+		}
    }
     assert(_counter);
     _counter->advance_epoch();
@@ -1133,6 +1168,7 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
     String target;
     String load;
     String source;
+    String cycles;
     int startcpu;
     if (Args(this, errh).bind(conf)
         .read_mp("METHOD", method)
@@ -1146,13 +1182,25 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
         .read_or_set("UNDERLOAD", _underloaded_thresh, 0.25)
         .read_or_set("OVERLOAD", _overloaded_thresh, 0.75)
         .read_or_set("LOAD", load, "cpu")
+		.read_or_set("CYCLES", cycles, "cycles")
 		.read_or_set("AUTOSCALE", _autoscale, false)
 		.read_or_set("VERBOSE", _verbose, true)
         .consume() < 0)
         return -1;
 
 
-    _load = LOAD_CYCLES;
+    if (cycles == "cycles") {
+	_load = LOAD_CYCLES;
+    } else  if (cycles == "cyclesqueue") {
+	_load = LOAD_CYCLES_THEN_QUEUE;
+    } else  if (cycles == "cpu") {
+	_load = LOAD_CPU;
+    } else  if (cycles == "queue") {
+		_load = LOAD_QUEUE;
+	} else {
+		return errh->error("Unknown cycle method !");
+	}
+
     if (startcpu == -1) {
         startcpu = _max_cpus;
     }
@@ -1212,17 +1260,17 @@ DeviceBalancer::run_timer(Timer* t) {
             load.push_back(Pair<int,float>{i,l});
             totload += l;
         }
-    } else if (_load == LOAD_CYCLES) {
-	/**
-	 * Use the amount of cycles since last tick, more precise than LOAD_CPU.
-	 * We use the raw amount of cycles, divided by the total amount of cycles for all CPUs
-	 * This will give a number between 0 and 1, 1 being the total for all CPUs
-	 * We therefore multiply the load by the total (unprecise) load, to give a realistic
-	 * scale in term of "amount of cores" load but giving a relative better precision
-	 */
-	unsigned long long utotload = 0;
-	Vector<unsigned long long> uload;
-	for (int u = 0; u < _used_cpus.size(); u++) {
+    } else if (_load == LOAD_CYCLES || _load == LOAD_CYCLES_THEN_QUEUE) {
+		/**
+		 * Use the amount of cycles since last tick, more precise than LOAD_CPU.
+		 * We use the raw amount of cycles, divided by the total amount of cycles for all CPUs
+		 * This will give a number between 0 and 1, 1 being the total for all CPUs
+		 * We therefore multiply the load by the total (unprecise) load, to give a realistic
+		 * scale in term of "amount of cores" load but giving a relative better precision.
+		 */
+		unsigned long long utotload = 0;
+		Vector<unsigned long long> uload;
+		for (int u = 0; u < _used_cpus.size(); u++) {
 			int phys_id = _used_cpus[u].id;
 			unsigned long long ul = master()->thread(phys_id)->useful_kcycles();
 			unsigned long long pl = _used_cpus[u].last_cycles;
@@ -1230,31 +1278,54 @@ DeviceBalancer::run_timer(Timer* t) {
 			_used_cpus[u].last_cycles = ul;
 			uload.push_back(dl);
 			utotload += dl;
-            //click_chatter("core %d kcycles %llu %llu load %f", i, ul, dl, master()->thread(i)->load());
+			//click_chatter("core %d kcycles %llu %llu load %f", i, ul, dl, master()->thread(i)->load());
 			totload += master()->thread(phys_id)->load();
 		}
-	if (utotload > 0) {
-			for (int u = 0; u < _used_cpus.size(); u++) {
-				double pc = (double)uload[u] / (double)utotload;
-				if (totload * pc > 1.0)
-					totload = 1.0 / pc;
-			}
-	}
-
-	for (int u = 0; u < _used_cpus.size(); u++) {
-		int i = _used_cpus[u].id;
-		float l;
-		if (utotload == 0)
-			l = 0;
-		else {
-			double pc = (double)uload[u] / (double)utotload;
-			l = pc * totload;
-
-			//click_chatter("core %d load %f -> %f", i, pc, l);
+		if (utotload > 0) {
+				for (int u = 0; u < _used_cpus.size(); u++) {
+					double pc = (double)uload[u] / (double)utotload;
+					if (totload * pc > 1.0)
+						totload = 1.0 / pc;
+				}
 		}
-		assert(l <= 1 && l>=0);
-		load.push_back(Pair<int,float>{i,l});
-	}
+
+		int overloaded = 0;
+
+		for (int u = 0; u < _used_cpus.size(); u++) {
+			int i = _used_cpus[u].id;
+			float l;
+			if (utotload == 0)
+				l = 0;
+			else {
+				double pc = (double)uload[u] / (double)utotload;
+				l = pc * totload;
+
+				//click_chatter("core %d load %f -> %f", i, pc, l);
+			}
+			assert(l <= 1 && l>=0);
+			if (l > 0.98)
+				overloaded ++;
+			load.push_back(Pair<int,float>{i,l});
+		}
+
+		if (_load == LOAD_CYCLES_THEN_QUEUE && overloaded > 1) {
+			click_chatter("Overloaded");
+	        FromDPDKDevice* fd = ((BalanceMethodDPDK*)_method)->_fd;
+	        int port_id = fd->get_device()->port_id;
+	        float rxdesc = fd->get_nb_desc();
+	        for (int u = 0; u < _used_cpus.size(); u++) {
+	            int i = _used_cpus[u].id;
+	            int v = rte_eth_rx_queue_count(port_id, i);
+	            if (v < 0) {
+			click_chatter("WARNING : unsupported rte_eth_rx_queue_count for queue %d, error %d", i, v);
+			continue;
+	            }
+	            float l = (float)v / rxdesc;
+	            //click_chatter("Core %d %f %f",u,load[u].second,l);
+
+	            load[u].second = load[u].second * 0.90 + 0.10 * l;
+	        }
+		}
 	//
     } else { //_load == LOAD_QUEUE
         FromDPDKDevice* fd = ((BalanceMethodDPDK*)_method)->_fd;

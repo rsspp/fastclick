@@ -15,6 +15,7 @@ enum target_method {
 enum load_method {
     LOAD_CPU,
 	LOAD_CYCLES,
+	LOAD_CYCLES_THEN_QUEUE,
     LOAD_QUEUE
 };
 
@@ -62,12 +63,14 @@ class MethodMetron : public BalanceMethodDPDK, public LoadTracker { public:
         _rules_file = config;
     }
 
-
-    int initialize(ErrorHandler *errh, int startwith) override;
+    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
+    int initialize(ErrorHandler *errh, int startwith) override CLICK_COLD;
 
     void rebalance(Vector<Pair<int,float>> load) override;
 private:
     String _rules_file;
+    int _min_movement;
+    int _deflation_factor;
 };
 
 class RSSVerifier;
@@ -158,7 +161,7 @@ public:
     int _startwith;
     bool _autoscale;
 
-    bool _verbose;
+    int _verbose;
 
     struct CpuInfo {
 	int id;
