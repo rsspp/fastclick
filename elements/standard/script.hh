@@ -526,7 +526,8 @@ class Script : public Element { public:
 
     enum {
         ST_STEP = 0, ST_RUN, ST_GOTO,
-        ar_add = 0, ar_sub, ar_min, ar_max, ar_avg, ar_count, ar_popcount,
+        ar_add = 0, ar_sub, ar_min, ar_max, ar_avg, ar_count,
+        ar_popcount, ar_gt_vec,
         ar_mul, ar_div, ar_idiv, ar_mod, ar_rem,
         ar_neg, ar_abs,
         AR_LT, AR_EQ, AR_GT, AR_GE, AR_NE, AR_LE, // order is important
