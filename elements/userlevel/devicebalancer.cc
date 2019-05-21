@@ -731,8 +731,8 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 
             //Fix imbalance without the removed core
             for (int i = 0; i < p.N; i++) {
-		//Imbalance is positive if the core should loose some load
-		p.imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (p.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].second) / 2.0f);
+				//Imbalance is positive if the core should loose some load
+				p.imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (p.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].second) / 2.0f);
             }
             cp.imbalance = p.imbalance;
 
