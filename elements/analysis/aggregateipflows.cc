@@ -435,16 +435,19 @@ AggregateIPFlows::emit_fragment_head(HostPairInfo *hpinfo)
   find_flowinfo:
     // find the packet's FlowInfo
     FlowInfo *finfo, **pprev = &hpinfo->_flows;
-    for (finfo = *pprev; finfo; pprev = &finfo->_next, finfo = *pprev)
-	if (finfo->_aggregate == AGGREGATE_ANNO(head)) {
-	    *pprev = finfo->_next;
-	    finfo->_next = hpinfo->_flows;
-	    hpinfo->_flows = finfo;
-	    break;
-	}
+    for (finfo = *pprev; finfo; pprev = &finfo->_next, finfo = *pprev) {
+        if (finfo->_aggregate == AGGREGATE_ANNO(head)) {
+            *pprev = finfo->_next;
+            finfo->_next = hpinfo->_flows;
+            hpinfo->_flows = finfo;
+            break;
+        }
+    }
 
-    assert(finfo);
-    packet_emit_hook(head, iph, finfo);
+    if (!finfo) {
+        click_chatter("BUG : no finfo");
+    } else
+        packet_emit_hook(head, iph, finfo);
 #if HAVE_BATCH
     if (in_batch_mode)
         output(0).push_batch(PacketBatch::make_from_packet(head));

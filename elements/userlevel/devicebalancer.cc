@@ -1309,7 +1309,6 @@ DeviceBalancer::run_timer(Timer* t) {
 		}
 
 		if (_load == LOAD_CYCLES_THEN_QUEUE && overloaded > 1) {
-			click_chatter("Overloaded");
 	        FromDPDKDevice* fd = ((BalanceMethodDPDK*)_method)->_fd;
 	        int port_id = fd->get_device()->port_id;
 	        float rxdesc = fd->get_nb_desc();
