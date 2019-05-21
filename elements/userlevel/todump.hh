@@ -151,6 +151,8 @@ class ToDump : public BatchElement { public:
     NotifierSignal _signal;
     Element **_use_encap_from;
 
+
+
     static String read_handler(Element *, void *) CLICK_COLD;
     static int write_handler(const String &, Element *, void *, ErrorHandler *) CLICK_COLD;
     void write_packet(Packet *);
