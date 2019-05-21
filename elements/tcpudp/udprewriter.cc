@@ -6,7 +6,7 @@
  *
  * Copyright (c) 2000 Massachusetts Institute of Technology
  * Copyright (c) 2008-2010 Meraki, Inc.
- * Copyright (c) 2016 KTH Royal Institute of Technology
+ * Copyright (c) 2016-2018 KTH Royal Institute of Technology
  * Copyright (c) 2017 University of Liege
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -96,6 +96,7 @@ UDPRewriter::configure(Vector<String> &conf, ErrorHandler *errh)
 	has_udp_streaming_timeout, has_streaming_timeout;
     int reply_anno;
     uint32_t timeouts[2];
+    bool handle_migration = false;
     timeouts[0] = 300;		// 5 minutes
     timeouts[1] = default_guarantee;
 
@@ -107,6 +108,7 @@ UDPRewriter::configure(Vector<String> &conf, ErrorHandler *errh)
 	.read("UDP_STREAMING_TIMEOUT", SecondsArg(), _udp_streaming_timeout).read_status(has_udp_streaming_timeout)
 	.read("STREAMING_TIMEOUT", SecondsArg(), _udp_streaming_timeout).read_status(has_streaming_timeout)
 	.read("UDP_GUARANTEE", SecondsArg(), timeouts[1])
+    .read("HANDLE_MIGRATION", handle_migration)
 	.consume() < 0)
 	return -1;
 
@@ -123,6 +125,8 @@ UDPRewriter::configure(Vector<String> &conf, ErrorHandler *errh)
     }
     _udp_streaming_timeout *= CLICK_HZ; // IPRewriterBase handles the others
 
+    _handle_migration = handle_migration;
+
     return IPRewriterBase::configure(conf, errh);
 }
 
@@ -137,9 +141,9 @@ UDPRewriter::add_flow(int ip_p, const IPFlowID &flowid,
     UDPFlow *flow = new(data) UDPFlow
 	(&_input_specs[input], flowid, rewritten_flowid, ip_p,
 	 !!_timeouts[click_current_cpu_id()][1], click_jiffies() +
-         relevant_timeout(_timeouts[click_current_cpu_id()]));
+         relevant_timeout(_timeouts[click_current_cpu_id()]), input);
 
-    return store_flow(flow, input, _map[click_current_cpu_id()]);
+    return store_flow(flow, input, _state->map);
 }
 
 int
@@ -165,20 +169,33 @@ UDPRewriter::process(int port, Packet *p_in)
     }
 
     IPFlowID flowid(p);
-    IPRewriterEntry *m = _map[click_current_cpu_id()].get(flowid);
+
+    IPRewriterEntry *m = search_entry(flowid);
 
     if (!m) {			// create new mapping
         IPRewriterInput &is = _input_specs.unchecked_at(port);
-        IPFlowID rewritten_flowid = IPFlowID::uninitialized_t();
+        IPFlowID rewritten_flowid;
 
+        if (_handle_migration && !precopy) {
+            m = search_migrate_entry(flowid, _state);
+            if (m) {
+                m = UDPRewriter::add_flow(ip_p, flowid, m->rewritten_flowid(), port);
+                goto flow_added;
+            }
+        }
+
+        {
+        rewritten_flowid = IPFlowID::uninitialized_t();
         int result = is.rewrite_flowid(flowid, rewritten_flowid, p);
         if (result == rw_addmap) {
             m = UDPRewriter::add_flow(ip_p, flowid, rewritten_flowid, port);
         }
-
-        if (!m) {
+        if (!m)
             return result;
-        } else if (_annos & 2) {
+        }
+flow_added:
+
+        if (_annos & 2) {
             m->flow()->set_reply_anno(p->anno_u8(_annos >> 2));
         }
     }
@@ -224,7 +241,7 @@ UDPRewriter::dump_mappings_handler(Element *e, void *)
     click_jiffies_t now = click_jiffies();
     StringAccum sa;
     for (int i = 0; i < rw->_mem_units_no; i++) {
-        for (Map::iterator iter = rw->_map[i].begin(); iter.live(); ++iter) {
+        for (Map::iterator iter = rw->_state.get_value(i).map.begin(); iter.live(); ++iter) {
             iter->flow()->unparse(sa, iter->direction(), now);
             sa << '\n';
         }

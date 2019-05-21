@@ -72,7 +72,7 @@ class Task : private TaskLink { public:
      * For example, a task that polls a network driver for packets should
      * return true if it emits at least one packet, and false if no packets
      * were available. */
-    inline Task(TaskCallback f, void *user_data);
+    inline Task(TaskCallback f, void *user_data, int tid = -2);
 
     /** @brief Construct a task that calls @a e ->@link Element::run_task(Task*) run_task()@endlink.
      *
@@ -191,6 +191,11 @@ class Task : private TaskLink { public:
         _status.is_scheduled = false;
     }
 
+    /** @brief Unschedule the task, sending a notification
+     */
+
+    void unschedule_notify(Element* e);
+
     /** @brief Reschedule the task.
      *
      * The task is rescheduled on its home thread. It will eventually run,
@@ -204,6 +209,11 @@ class Task : private TaskLink { public:
         if (_pending_nextptr.x < 2)
             complete_schedule(0);
     }
+
+    /**
+     * @brief Reschedule the task, sending thread migration messages
+     */
+    void reschedule_notify(Element* e);
 
     /** @brief Reschedule a task from the task's callback function.
      *
@@ -378,7 +388,7 @@ CLICK_DECLS
 
 
 inline
-Task::Task(TaskCallback f, void *user_data)
+Task::Task(TaskCallback f, void *user_data, int tid)
     :
 #if HAVE_TASK_HEAP
       _schedpos(-1),
@@ -395,7 +405,7 @@ Task::Task(TaskCallback f, void *user_data)
 #endif
       _thread(0), _owner(0)
 {
-    _status.home_thread_id = -2;
+    _status.home_thread_id = tid;
     _status.is_scheduled = _status.is_strong_unscheduled = false;
     _pending_nextptr.x = 0;
 }
