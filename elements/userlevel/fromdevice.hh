@@ -203,6 +203,9 @@ class FromDevice : public BatchElement { public:
 
     void kernel_drops(bool& known, int& max_drops) const;
 
+    int set_rss_reta(const Vector<unsigned> &reta);
+    int get_rss_reta_size();
+
   private:
 
 #if FROMDEVICE_ALLOW_LINUX || FROMDEVICE_ALLOW_PCAP
@@ -215,7 +218,7 @@ class FromDevice : public BatchElement { public:
     friend void FromDevice_get_packet(u_char*, const struct pcap_pkthdr*,
                                       const u_char*);
 #endif
-
+    bool _active;
     bool _force_ip;
 #if FROMDEVICE_ALLOW_PCAP && TIMESTAMP_NANOSEC && defined(PCAP_TSTAMP_PRECISION_NANO)
     bool _pcap_nanosec;

@@ -41,7 +41,10 @@
 #include <click/packet_anno.hh>
 #include <click/standard/scheduleinfo.hh>
 #include <click/userutils.hh>
+#include <linux/ethtool.h>
+#include <linux/netlink.h>
 #include <unistd.h>
+#include <linux/sockios.h>
 #include <fcntl.h>
 #include "fakepcap.hh"
 
@@ -86,7 +89,7 @@ FromDevice::~FromDevice()
 int
 FromDevice::configure(Vector<String> &conf, ErrorHandler *errh)
 {
-    bool promisc = false, outbound = false, sniffer = true, timestamp = true;
+    bool promisc = false, outbound = false, sniffer = true, timestamp = true, active = true;
     _protocol = 0;
     _snaplen = default_snaplen;
     _headroom = Packet::default_headroom;
@@ -110,6 +113,7 @@ FromDevice::configure(Vector<String> &conf, ErrorHandler *errh)
         .read("ENCAP", WordArg(), encap_type).read_status(has_encap)
         .read("BURST", _burst)
         .read("TIMESTAMP", timestamp)
+		.read("ACTIVE", active)
         .complete() < 0)
         return -1;
     if (_snaplen > 65535 || _snaplen < 14)
@@ -159,6 +163,7 @@ FromDevice::configure(Vector<String> &conf, ErrorHandler *errh)
     _promisc = promisc;
     _outbound = outbound;
     _timestamp = timestamp;
+    _active = active;
     return 0;
 }
 
@@ -408,7 +413,7 @@ FromDevice::initialize(ErrorHandler *errh)
         ScheduleInfo::initialize_task(this, &_task, false, errh);
 #endif
 #if FROMDEVICE_ALLOW_PCAP || FROMDEVICE_ALLOW_LINUX
-    if (_fd >= 0)
+    if (_fd >= 0 && _active)
         add_select(_fd, SELECT_READ);
 #endif
 
@@ -606,7 +611,8 @@ FromDevice::run_task(Task *)
     }
     if (r > 0) {
         _count += r;
-        _task.fast_reschedule();
+        if (likely(_active))
+		_task.fast_reschedule();
 #if HAVE_BATCH
         if (md.batch) {
             md.batch->make_tail(md.batch_last, md.batch_count);
@@ -644,11 +650,18 @@ FromDevice::kernel_drops(bool& known, int& max_drops) const
 #endif
 }
 
+
+enum {h_reset_count, h_rss_max, h_rss_reta_size, h_kernel_drops, h_count, h_encap};
+
+
 String
 FromDevice::read_handler(Element* e, void *thunk)
 {
     FromDevice* fd = static_cast<FromDevice*>(e);
-    if (thunk == (void *) 0) {
+    switch ((intptr_t)thunk) {
+    case h_rss_reta_size:
+	return String(fd->get_rss_reta_size());
+    case h_kernel_drops: {
         int max_drops;
         bool known;
         fd->kernel_drops(known, max_drops);
@@ -658,27 +671,156 @@ FromDevice::read_handler(Element* e, void *thunk)
             return "<" + String(max_drops);
         else
             return "??";
-    } else if (thunk == (void *) 1)
+    }
+    case h_encap:
         return String(fake_pcap_unparse_dlt(fd->_datalink));
-    else
+    case h_count:
         return String(fd->_count);
+    }
 }
 
 int
-FromDevice::write_handler(const String &, Element *e, void *, ErrorHandler *)
+FromDevice::write_handler(const String &input, Element *e, void *thunk, ErrorHandler *errh)
 {
     FromDevice* fd = static_cast<FromDevice*>(e);
-    fd->_count = 0;
-    return 0;
+    switch ((intptr_t)thunk) {
+	case h_rss_max: {
+            int max;
+            if (!IntArg().parse<int>(input,max))
+                return errh->error("Not a valid integer");
+            Vector<unsigned> table;
+            table.resize(fd->get_rss_reta_size());
+            for (int i = 0; i < table.size(); i++) {
+		table[i] = i % max;
+            }
+            return fd->set_rss_reta(table);
+        }
+		case h_reset_count:
+			fd->_count = 0;
+			return 0;
+		default:
+			return -1;
+    }
 }
+
+int
+FromDevice::get_rss_reta_size()
+{
+	struct ethtool_rxfh rss_head = {0};
+	int err = 0;
+
+	/* Open control socket. */
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+	if (fd < 0)
+		fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_GENERIC);
+
+	if (!fd) {
+		click_chatter("Cannot open socket");
+		return -1;
+	}
+	struct ifreq ifr;
+	memset(&ifr, 0, sizeof(ifr));
+	ifr.ifr_data = (char*)&rss_head;
+	rss_head.cmd = ETHTOOL_GRSSH;
+	strcpy(ifr.ifr_name, _ifname.c_str());
+	err = ioctl(fd, SIOCETHTOOL, &ifr);
+	if (err != 0) {
+		click_chatter("Bad request for %s",_ifname.c_str() );
+		return err;
+	}
+
+	close(fd);
+
+	return rss_head.indir_size;
+}
+
+int
+FromDevice::set_rss_reta(const Vector<unsigned> &reta)
+{
+	struct ethtool_rxfh rss_head = {0};
+	struct ethtool_rxfh *rss = NULL;
+	//struct ethtool_rxnfc ring_count;
+	//struct ethtool_gstrings *hfuncs = NULL;
+	char *rxfhindir_key = NULL;
+	char *req_hfunc_name = NULL;
+	char *hfunc_name = NULL;
+	char *hkey = NULL;
+	int err = 0;
+	int i;
+	uint32_t arg_num = 0, indir_bytes = 0;
+	uint32_t req_hfunc = 0;
+	uint32_t entry_size = sizeof(rss_head.rss_config[0]);
+
+	/* Open control socket. */
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+	if (fd < 0)
+		fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_GENERIC);
+
+	if (!fd) {
+		click_chatter("Cannot open socket");
+		return -1;
+	}
+
+	/*
+	ring_count.cmd = ETHTOOL_GRXRINGS;
+	err = send_ioctl(ctx, &ring_count);
+	if (err < 0) {
+		perror("Cannot get RX ring count");
+		return 1;
+	}*/
+
+	struct ifreq ifr;
+	memset(&ifr, 0, sizeof(ifr));
+	ifr.ifr_data = (char*)&rss_head;
+	rss_head.cmd = ETHTOOL_GRSSH;
+	strcpy(ifr.ifr_name, _ifname.c_str());
+	err = ioctl(fd, SIOCETHTOOL, &ifr);
+
+	indir_bytes = reta.size() * entry_size;
+
+
+	rss = (struct ethtool_rxfh*)calloc(1, sizeof(*rss) + indir_bytes + rss_head.key_size);
+	if (!rss) {
+		perror("Cannot allocate memory for RX flow hash config");
+		err = 1;
+		goto free;
+	}
+	rss->cmd = ETHTOOL_SRSSH;
+	rss->rss_context = 0;
+	rss->hfunc = 0;
+	rss->key_size = 0;
+	rss->indir_size = reta.size();
+	for (i = 0; i < reta.size(); i++) {
+		rss->rss_config[i] = reta[i];
+	}
+
+	memset(&ifr, 0, sizeof(ifr));
+	ifr.ifr_data = (char*)rss;
+	strcpy(ifr.ifr_name, _ifname.c_str());
+	err = ioctl(fd, SIOCETHTOOL, &ifr);
+	if (err < 0) {
+		perror("Cannot set RX flow hash configuration");
+		err = 1;
+	}
+	close(fd);
+
+free:
+	free(rss);
+	return err;
+}
+
 
 void
 FromDevice::add_handlers()
 {
-    add_read_handler("kernel_drops", read_handler, 0);
-    add_read_handler("encap", read_handler, 1);
-    add_read_handler("count", read_handler, 2);
-    add_write_handler("reset_counts", write_handler, 0, Handler::BUTTON);
+    add_write_handler("max_rss", write_handler, h_rss_max);
+    add_read_handler("rss_reta_size", read_handler, h_rss_reta_size);
+    add_read_handler("kernel_drops", read_handler, h_kernel_drops);
+    add_read_handler("encap", read_handler, h_encap);
+    add_read_handler("count", read_handler, h_count);
+    add_write_handler("reset_counts", write_handler, h_reset_count, Handler::BUTTON);
 }
 
 CLICK_ENDDECLS
