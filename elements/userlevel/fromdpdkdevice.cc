@@ -41,7 +41,7 @@ CLICK_DECLS
 #define LOAD_UNIT 10
 
 FromDPDKDevice::FromDPDKDevice() :
-    _dev(0), _rx_intr(-1)
+    _dev(), _rx_intr(-1)
 {
 #if HAVE_BATCH
     in_batch_mode = BATCH_MODE_YES;
@@ -52,6 +52,17 @@ FromDPDKDevice::FromDPDKDevice() :
 
 FromDPDKDevice::~FromDPDKDevice()
 {
+}
+
+void *
+FromDPDKDevice::cast(const char *n)
+{
+    if (strcmp(n, "EthernetDevice") == 0)
+        return get_device()->get_eth_device();
+    else if (strcmp(n, "DPDKDevice") == 0)
+        return get_device();
+    else
+	return Element::cast(n);
 }
 
 int FromDPDKDevice::configure(Vector<String> &conf, ErrorHandler *errh)
@@ -459,10 +470,10 @@ String FromDPDKDevice::read_handler(Element *e, void * thunk)
         case h_driver:
             return String(fd->_dev->get_device_driver());
         case h_rss_reta_size:
-		return String(fd->_dev->get_reta_size());
+		return String(fd->_dev->dpdk_get_reta_size());
         case h_rss_reta:
 		StringAccum acc;
-		Vector<unsigned> list = fd->_dev->get_rss_reta();
+		Vector<unsigned> list = fd->_dev->dpdk_get_rss_reta();
 		for (int i= 0; i < list.size(); i++) {
 			acc << list[i] << " ";
 		}
@@ -633,7 +644,7 @@ int FromDPDKDevice::write_handler(
             int max;
             if (!IntArg().parse<int>(input,max))
                 return errh->error("Not a valid integer");
-            return fd->_dev->set_rss_max(max);
+            return fd->_dev->dpdk_set_rss_max(max);
         }
     }
     return -1;

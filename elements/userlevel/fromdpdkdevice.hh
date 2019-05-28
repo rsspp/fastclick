@@ -176,6 +176,7 @@ public:
         return CONFIGURE_PHASE_PRIVILEGED - 5;
     }
     bool can_live_reconfigure() const { return false; }
+    void* cast(const char *n);
 
     int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
     int initialize(ErrorHandler *) CLICK_COLD;
@@ -190,6 +191,10 @@ public:
 
     inline DPDKDevice *get_device() {
         return _dev;
+    }
+
+    inline EthernetDevice *get_eth_device() {
+        return _dev->get_eth_device();
     }
 
 private:

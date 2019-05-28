@@ -23,6 +23,8 @@
 #include <click/config.h>
 #include <sys/types.h>
 #include <sys/time.h>
+
+
 #if !defined(__sun)
 # include <sys/ioctl.h>
 #else
@@ -64,6 +66,18 @@
 
 CLICK_DECLS
 
+#define offset_of_base(base,derived,derived_member) ((unsigned char*)(&(reinterpret_cast<base *>(0)->derived_member)) - (unsigned char*)(base *)0)
+
+static int dev_eth_set_rss_reta(EthernetDevice* eth, const Vector<unsigned> &reta) {
+	FromDevice* fd = (FromDevice*)((unsigned char*)eth - offset_of_base(FromDevice,EthernetDevice,get_rss_reta_size));
+	return fd->dev_set_rss_reta(reta);
+}
+
+static int dev_eth_get_rss_reta_size(EthernetDevice* eth) {
+	FromDevice* fd = (FromDevice*)((unsigned char*)eth - offset_of_base(FromDevice,EthernetDevice,get_rss_reta_size));
+	return fd->dev_get_rss_reta_size();
+}
+
 FromDevice::FromDevice()
     :
 #if FROMDEVICE_ALLOW_PCAP
@@ -80,6 +94,8 @@ FromDevice::FromDevice()
 #if HAVE_BATCH
     in_batch_mode = BATCH_MODE_YES;
 #endif
+	set_rss_reta = &dev_eth_set_rss_reta;
+	get_rss_reta_size = &dev_eth_get_rss_reta_size;
 }
 
 FromDevice::~FromDevice()
@@ -165,6 +181,16 @@ FromDevice::configure(Vector<String> &conf, ErrorHandler *errh)
     _timestamp = timestamp;
     _active = active;
     return 0;
+}
+
+
+void *
+FromDevice::cast(const char *n)
+{
+    if (strcmp(n, "EthernetDevice") == 0)
+        return static_cast<EthernetDevice*>(this);
+    else
+	return Element::cast(n);
 }
 
 #if FROMDEVICE_ALLOW_LINUX
@@ -660,7 +686,7 @@ FromDevice::read_handler(Element* e, void *thunk)
     FromDevice* fd = static_cast<FromDevice*>(e);
     switch ((intptr_t)thunk) {
     case h_rss_reta_size:
-	return String(fd->get_rss_reta_size());
+	return String(fd->dev_get_rss_reta_size());
     case h_kernel_drops: {
         int max_drops;
         bool known;
@@ -689,11 +715,11 @@ FromDevice::write_handler(const String &input, Element *e, void *thunk, ErrorHan
             if (!IntArg().parse<int>(input,max))
                 return errh->error("Not a valid integer");
             Vector<unsigned> table;
-            table.resize(fd->get_rss_reta_size());
+            table.resize(fd->dev_get_rss_reta_size());
             for (int i = 0; i < table.size(); i++) {
 		table[i] = i % max;
             }
-            return fd->set_rss_reta(table);
+            return fd->dev_set_rss_reta(table);
         }
 		case h_reset_count:
 			fd->_count = 0;
@@ -704,7 +730,7 @@ FromDevice::write_handler(const String &input, Element *e, void *thunk, ErrorHan
 }
 
 int
-FromDevice::get_rss_reta_size()
+FromDevice::dev_get_rss_reta_size()
 {
 	struct ethtool_rxfh rss_head = {0};
 	int err = 0;
@@ -736,7 +762,7 @@ FromDevice::get_rss_reta_size()
 }
 
 int
-FromDevice::set_rss_reta(const Vector<unsigned> &reta)
+FromDevice::dev_set_rss_reta(const Vector<unsigned> &reta)
 {
 	struct ethtool_rxfh rss_head = {0};
 	struct ethtool_rxfh *rss = NULL;

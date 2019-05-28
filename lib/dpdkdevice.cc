@@ -35,10 +35,30 @@ extern "C" {
 
 CLICK_DECLS
 
-DPDKDevice::DPDKDevice() : port_id(-1), info() {
+
+
+static int dpdk_eth_set_rss_reta(EthernetDevice* eth, const Vector<unsigned> &reta) {
+	return ((DPDKDevice*)eth)->dpdk_set_rss_reta(reta);
 }
 
-DPDKDevice::DPDKDevice(portid_t port_id) : port_id(port_id) {
+static int dpdk_eth_get_rss_reta_size(EthernetDevice* eth) {
+	return ((DPDKDevice*)eth)->dpdk_get_reta_size();
+}
+
+static Vector<unsigned> dpdk_eth_get_rss_reta(EthernetDevice* eth) {
+	return ((DPDKDevice*)eth)->dpdk_get_rss_reta();
+}
+
+DPDKDevice::DPDKDevice() : port_id(-1), info(), EthernetDevice() {
+	set_rss_reta = &dpdk_eth_set_rss_reta;
+	get_rss_reta = &dpdk_eth_get_rss_reta;
+	get_rss_reta_size = &dpdk_eth_get_rss_reta_size;
+    assert(get_rss_reta_size);
+    click_chatter("DEV ok!");
+}
+
+DPDKDevice::DPDKDevice(portid_t port_id) : DPDKDevice() {
+    this->port_id = port_id;
     #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
         if (port_id >= 0)
             initialize_flow_director(port_id, ErrorHandler::default_handler());
@@ -69,12 +89,12 @@ const char *DPDKDevice::get_device_driver()
 
 #define RETA_CONF_SIZE     (ETH_RSS_RETA_SIZE_512 / RTE_RETA_GROUP_SIZE)
 
-int DPDKDevice::set_rss_max(int max)
+int DPDKDevice::dpdk_set_rss_max(int max)
 {
 	struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
     struct rte_eth_dev_info dev_info;
 
-    uint16_t reta_size = get_reta_size();
+    uint16_t reta_size = dpdk_get_reta_size();
 	uint32_t i;
 	int status;
 	/* RETA setting */
@@ -95,7 +115,7 @@ int DPDKDevice::set_rss_max(int max)
 	return status;
 }
 
-int DPDKDevice::set_rss_reta(const Vector<unsigned> &reta)
+int DPDKDevice::dpdk_set_rss_reta(const Vector<unsigned> &reta)
 {
 	struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
     struct rte_eth_dev_info dev_info;
@@ -120,7 +140,7 @@ int DPDKDevice::set_rss_reta(const Vector<unsigned> &reta)
 }
 
 
-int DPDKDevice::get_reta_size() const {
+int DPDKDevice::dpdk_get_reta_size() const {
 	struct rte_eth_dev_info dev_info;
 
 	rte_eth_dev_info_get(port_id, &dev_info);
@@ -129,11 +149,11 @@ int DPDKDevice::get_reta_size() const {
 }
 
 Vector<unsigned>
-DPDKDevice::get_rss_reta() const
+DPDKDevice::dpdk_get_rss_reta() const
 {
 	struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
 	memset(reta_conf, 0xff, RETA_CONF_SIZE * sizeof(struct rte_eth_rss_reta_entry64));
-    uint16_t reta_size = get_reta_size();
+    uint16_t reta_size = dpdk_get_reta_size();
 
     assert(reta_size > 0);
 
@@ -155,6 +175,12 @@ DPDKDevice::get_rss_reta() const
 	}
 
 	return list;
+}
+
+EthernetDevice*
+DPDKDevice::get_eth_device() {
+    assert(get_rss_reta_size);
+	 return reinterpret_cast<EthernetDevice*>(this);
 }
 
 #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
@@ -704,7 +730,7 @@ int DPDKDevice::initialize_device(ErrorHandler *errh)
     }
 
     if (info.init_rss > 0) {
-        if (set_rss_max(info.init_rss) != 0) {
+        if (dpdk_set_rss_max(info.init_rss) != 0) {
             return errh->error("Could not set RSS to %d queues",info.init_rss);
         }
     }

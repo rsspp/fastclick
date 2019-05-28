@@ -37,6 +37,7 @@
 #include <click/args.hh>
 #include <click/etheraddress.hh>
 #include <click/timer.hh>
+#include <click/ethernetdevice.hh>
 
 /**
  * Unified type for DPDK port IDs.
@@ -64,7 +65,9 @@ typedef uint32_t counter_t;
 
 extern bool dpdk_enabled;
 
-class DPDKDevice {
+struct DPDKEthDevice;
+
+class DPDKDevice : public EthernetDevice {
 public:
 
     portid_t port_id;
@@ -155,10 +158,13 @@ public:
     String get_device_vendor_name();
     uint16_t get_device_id();
     const char *get_device_driver();
-    int set_rss_max(int max);
-    int set_rss_reta(const Vector<unsigned> &reta);
-    int get_reta_size() const;
-    Vector<unsigned>  get_rss_reta() const;
+
+    int dpdk_set_rss_max(int max);
+    int dpdk_set_rss_reta(const Vector<unsigned> &reta);
+    int dpdk_get_reta_size() const;
+    Vector<unsigned>  dpdk_get_rss_reta() const;
+
+    EthernetDevice* get_eth_device();
 
     static unsigned int dev_count() {
 #if RTE_VERSION >= RTE_VERSION_NUM(18,05,0,0)

@@ -1,7 +1,17 @@
 #ifndef CLICK_FROMDEVICE_USERLEVEL_HH
 #define CLICK_FROMDEVICE_USERLEVEL_HH
 #include <click/batchelement.hh>
+#include <click/ethernetdevice.hh>
 #include "elements/userlevel/kernelfilter.hh"
+
+# define PCAP_DONT_INCLUDE_PCAP_BPF_H 1
+#include <bpf/bpf.h>
+struct bpf_program {
+    u_int bf_len;
+    struct bpf_insn *bf_insns;
+};
+
+
 
 #ifdef __linux__
 # define FROMDEVICE_ALLOW_LINUX 1
@@ -160,7 +170,7 @@ Returns a string indicating the encapsulation type on this link. Can be
 
 =a ToDevice.u, FromDump, ToDump, KernelFilter, FromDevice(n) */
 
-class FromDevice : public BatchElement { public:
+class FromDevice : public BatchElement, public EthernetDevice { public:
 
     FromDevice() CLICK_COLD;
     ~FromDevice() CLICK_COLD;
@@ -170,6 +180,7 @@ class FromDevice : public BatchElement { public:
     const char *processing() const	{ return PUSH; }
 
     enum { default_snaplen = 2046 };
+    void *cast(const char *n) override;
     int configure_phase() const		{ return KernelFilter::CONFIGURE_PHASE_FROMDEVICE; }
     int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
     int initialize(ErrorHandler *) CLICK_COLD;
@@ -203,8 +214,9 @@ class FromDevice : public BatchElement { public:
 
     void kernel_drops(bool& known, int& max_drops) const;
 
-    int set_rss_reta(const Vector<unsigned> &reta);
-    int get_rss_reta_size();
+    int dev_set_rss_reta(const Vector<unsigned> &reta);
+    int dev_get_rss_reta_size();
+
 
   private:
 
