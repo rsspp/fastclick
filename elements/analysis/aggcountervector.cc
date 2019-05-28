@@ -114,8 +114,9 @@ AggregateCounterVector::update_batch(PacketBatch *batch)
         }
 
         n->count += amount;
+#if COUNT_FLOWS
         n->add_flow(AGGREGATE_ANNO(p));
-
+#endif
     }
     return true;
 }
@@ -140,7 +141,9 @@ AggregateCounterVector::update(Packet *p)
 	if (_ip_bytes && p->has_network_header())
 	    amount -= p->network_header_offset();
     }
+#if COUNT_FLOWS
     n.add_flow(AGGREGATE_ANNO(p));
+#endif
     n.count += amount;
 
     return true;

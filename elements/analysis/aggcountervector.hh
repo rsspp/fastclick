@@ -2,6 +2,8 @@
 #define CLICK_AGGCOUNTERVECTOR_HH
 #include <click/batchelement.hh>
 #include <click/multithread.hh>
+#include <click/vector.hh>
+#include <click/pair.hh>
 CLICK_DECLS
 class HandlerCall;
 
@@ -26,6 +28,7 @@ class AggregateCounterVector : public BatchElement { public:
 	    uint64_t count;
 	    uint64_t variance;
 	    uint32_t epoch;
+#if COUNT_FLOWS
 	    uint16_t flows; //Max 42*8
 	    uint8_t map[42];
 
@@ -40,6 +43,7 @@ class AggregateCounterVector : public BatchElement { public:
 		}
 
 	    }
+#endif
 	} CLICK_CACHE_ALIGN;
 
 
@@ -58,6 +62,8 @@ class AggregateCounterVector : public BatchElement { public:
     void add_handlers() CLICK_COLD;
 
     inline Node& find_node(uint32_t agg);
+    inline Node& find_node_nocheck(uint32_t agg);
+    inline void read_values(Vector<uint64_t>& count);
     inline bool update(Packet *);
     inline bool update_batch(PacketBatch *);
     void push(int, Packet *);
@@ -71,6 +77,7 @@ class AggregateCounterVector : public BatchElement { public:
     inline void advance_epoch() {
 	_epoch++;
     }
+
   private:
 
     bool _bytes : 1;
@@ -97,14 +104,31 @@ AggregateCounterVector::find_node(uint32_t a)
 {
     Node& n = _nodes.unchecked_at(a);
     if (n.epoch != _epoch) {
-	n.variance = n.variance / 3 + (n.count * 2 / 3);
-	n.count = 0;
-	n.epoch = _epoch;
-	n.flows = 0;
-	bzero(n.map,sizeof(n.map));
+		n.variance = n.variance / 3 + (n.count * 2 / 3);
+		n.count = 0;
+		n.epoch = _epoch;
+#if COUNT_FLOWS
+		n.flows = 0;
+		bzero(n.map,sizeof(n.map));
+#endif
+
     }
     return n;
 }
 
+inline AggregateCounterVector::Node&
+AggregateCounterVector::find_node_nocheck(uint32_t a)
+{
+    return _nodes.unchecked_at(a);
+}
+/*
+inline void
+AggregateCounterVector::read_values(Vector<Pair<uint64_t,uint64_t> >& count) {
+	for (int a ; a < _nodes.size(); a++) {
+		count[a].first = _nodes.unchecked_at(a).count;
+		count[a].second = _nodes.unchecked_at(a).second / 3 + (count[a].first * 2) / 3;
+	}
+}
+*/
 CLICK_ENDDECLS
 #endif
