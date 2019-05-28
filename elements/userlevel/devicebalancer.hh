@@ -2,7 +2,7 @@
 #define CLICK_DEVICEBALANCER_HH
 
 #include <click/batchelement.hh>
-#include "fromdpdkdevice.hh"
+#include <click/ethernetdevice.hh>
 #include "../analysis/aggcountervector.hh"
 
 CLICK_DECLS
@@ -16,7 +16,8 @@ enum load_method {
     LOAD_CPU,
 	LOAD_CYCLES,
 	LOAD_CYCLES_THEN_QUEUE,
-    LOAD_QUEUE
+    LOAD_QUEUE,
+	LOAD_REALCPU
 };
 
 
@@ -45,21 +46,17 @@ protected:
     DeviceBalancer* balancer;
 };
 
-class BalanceMethodDPDK : public BalanceMethod { public:
-    BalanceMethodDPDK(DeviceBalancer* b, Element* fd) : BalanceMethod(b) {
-        _fd = dynamic_cast<FromDPDKDevice*>(fd);
-        if (!_fd) {
-            click_chatter("Not a DPDK device");
-        }
-    }
-protected:
-    FromDPDKDevice* _fd;
+class BalanceMethodDevice : public BalanceMethod { public:
+    BalanceMethodDevice(DeviceBalancer* b, Element* fd);
+
+    EthernetDevice* _fd;
+    bool _is_dpdk;
     friend class DeviceBalancer;
 };
 
-class MethodMetron : public BalanceMethodDPDK, public LoadTracker { public:
+class MethodMetron : public BalanceMethodDevice, public LoadTracker { public:
 
-    MethodMetron(DeviceBalancer* b, Element* fd, String config) : BalanceMethodDPDK(b,fd) {
+    MethodMetron(DeviceBalancer* b, Element* fd, String config) : BalanceMethodDevice(b,fd) {
         _rules_file = config;
     }
 
@@ -75,10 +72,10 @@ private:
 
 class RSSVerifier;
 
-class BalanceMethodRSS : public BalanceMethodDPDK { public:
+class BalanceMethodRSS : public BalanceMethodDevice { public:
 
-    BalanceMethodRSS(DeviceBalancer* b, Element* fd) : BalanceMethodDPDK(b,fd), _verifier(0) {
-    }
+    BalanceMethodRSS(DeviceBalancer* b, Element* fd);
+
     int initialize(ErrorHandler *errh, int startwith) override CLICK_COLD;
     int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     void rebalance(Vector<Pair<int,float>> load) override;
@@ -88,10 +85,11 @@ class BalanceMethodRSS : public BalanceMethodDPDK { public:
     Vector<rte_flow*> _flows;
 
     bool update_reta_flow(bool validate = false);
-    void update_reta(bool validate = false);
+    bool update_reta(bool validate = false);
 protected:
     bool _update_reta_flow;
     RSSVerifier* _verifier;
+    int _reta_size;
 };
 
 
@@ -107,8 +105,7 @@ class MethodRSSRR : public BalanceMethodRSS { public:
 
 class MethodPianoRSS : public BalanceMethodRSS, public LoadTracker { public:
 
-    MethodPianoRSS(DeviceBalancer* b, Element* fd, String config) : BalanceMethodRSS(b,fd) {
-    }
+    MethodPianoRSS(DeviceBalancer* b, Element* fd, String config);
 
     int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     int initialize(ErrorHandler *errh, int startwith) override;
@@ -116,7 +113,16 @@ class MethodPianoRSS : public BalanceMethodRSS, public LoadTracker { public:
     void rebalance(Vector<Pair<int,float>> load) override;
 private:
 
-    AggregateCounterVector* _counter;
+    //We keep the space here to avoid reallocation
+    struct Node {
+	uint64_t count;
+	uint64_t variance;
+    };
+    Vector<Node> _count;
+
+    bool _counter_is_xdp;
+    int _xdp_table_fd;
+    Element* _counter;
 
     float _target_load;
     float _imbalance_alpha;
@@ -139,6 +145,7 @@ public:
     const char *class_name() const { return "DeviceBalancer"; }
     const char *port_count() const { return "0/0"; }
     const char *processing() const { return AGNOSTIC; }
+ //   const int configure_phase() override { }
 
     bool can_live_reconfigure() const { return false; }
 
@@ -160,6 +167,17 @@ public:
     load_method _load;
     int _startwith;
     bool _autoscale;
+
+
+    struct CPUStat {
+	CPUStat() : lastTotal(0), lastIdle(0) {
+
+	}
+        unsigned long long lastTotal;
+        unsigned long long lastIdle;
+    };
+
+            Vector<CPUStat> _cpustats;
 
     int _verbose;
 

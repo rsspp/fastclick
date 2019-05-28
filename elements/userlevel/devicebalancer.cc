@@ -19,6 +19,7 @@
 #include <click/multithread.hh>
 #include <rte_flow.h>
 #include "devicebalancer.hh"
+#include "xdploader.hh"
 #include <queue>
 #include <vector>
 #include <limits.h>
@@ -60,13 +61,30 @@ int BalanceMethod::initialize(ErrorHandler *errh, int startwith) {
     return 0;
 };
 
+BalanceMethodDevice::BalanceMethodDevice(DeviceBalancer* b, Element* fd) : BalanceMethod(b) {
+    _fd = (EthernetDevice*)fd->cast("EthernetDevice");
+    if (!_fd) {
+        click_chatter("Not an Ethernet Device");
+    }
+    _is_dpdk = fd->cast("DPDKDevice");
+    if (_is_dpdk) {
+        click_chatter("DPDK mode");
+    } else
+        click_chatter("Kernel mode");
+    assert(_fd);
+    assert(_fd->set_rss_reta);
+    assert(_fd->get_rss_reta_size);
+}
+
 
 /**
  * Metron
  */
 
 int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
-    FlowDirector *flow_dir = FlowDirector::get_flow_director(_fd->get_device()->port_id);
+	if (!_is_dpdk)
+		return errh->error("Metron only works with DPDK");
+    FlowDirector *flow_dir = FlowDirector::get_flow_director(((DPDKDevice*)_fd)->port_id);
     assert(flow_dir);
 
     // Invoke Flow Director only if active
@@ -103,7 +121,7 @@ int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
     }
 
 
-    _fd->get_device()->set_rss_max(startwith);
+    ((DPDKDevice*)_fd)->dpdk_set_rss_max(startwith);
 
     load_tracker_initialize(errh);
 
@@ -130,7 +148,7 @@ int MethodMetron::configure(Vector<String> &conf, ErrorHandler *errh)  {
 }
 
 void MethodMetron::rebalance(Vector<Pair<int,float>> load) {
-    FlowDirector *flow_dir = FlowDirector::get_flow_director(_fd->get_device()->port_id);
+    FlowDirector *flow_dir = FlowDirector::get_flow_director(((DPDKDevice*)_fd)->port_id);
     click_jiffies_t now = click_jiffies();
     std::vector<Pair<int,float>> underloaded;
     std::vector<Pair<int,float>> overloaded;
@@ -285,19 +303,22 @@ void MethodMetron::rebalance(Vector<Pair<int,float>> load) {
     }
 }
 
+
 /**
  * RSS base
  */
+BalanceMethodRSS::BalanceMethodRSS(DeviceBalancer* b, Element* fd) : BalanceMethodDevice(b,fd), _verifier(0) {
+}
 
 int BalanceMethodRSS::initialize(ErrorHandler *errh, int startwith) {
-	int reta = _fd->get_device()->get_reta_size();
-
-
+	int reta = _fd->get_rss_reta_size(_fd);
+	click_chatter("Reta size %d", reta);
 	if (reta <= 0)
-		return errh->error("DPDK device not initialized or RSS is misconfigured");
-	_table = _fd->get_device()->get_rss_reta();
+		return errh->error("Device not initialized or RSS is misconfigured");
+	if (_fd->get_rss_reta)
+		_table = _fd->get_rss_reta(_fd);
 
-	_table.resize(512);
+	_table.resize(_reta_size);
 	/*
     if (_table.size() < 128) {
 	return errh->error("RSS reta table is %d long. It should be at least 128.", _table.size());
@@ -306,38 +327,54 @@ int BalanceMethodRSS::initialize(ErrorHandler *errh, int startwith) {
     for (int i = 0; i < _table.size(); i++) {
 		_table[i] = 0;
 	}
-    _fd->get_device()->set_rss_reta(_table);
+    _fd->set_rss_reta(_fd, _table);
 
-    int port_id = _fd->get_device()->port_id;
+    if (_is_dpdk) {
 
-    _rss_conf.rss_key = (uint8_t*)CLICK_LALLOC(128);
-	_rss_conf.rss_key_len = 128; //This is only a max
-    rte_eth_dev_rss_hash_conf_get(port_id, &_rss_conf);
+		int port_id = ((DPDKDevice*)_fd)->port_id;
+
+		_rss_conf.rss_key = (uint8_t*)CLICK_LALLOC(128);
+		_rss_conf.rss_key_len = 128; //This is only a max
+		rte_eth_dev_rss_hash_conf_get(port_id, &_rss_conf);
 
 
-    struct rte_flow_error error;
-    rte_eth_dev_stop(port_id);
-    //rte_eth_promiscuous_disable(port_id);
-    int res = rte_flow_isolate(port_id, 1, &error);
-    if (res != 0)
-        errh->warning("Warning %d : Could not set isolated mode because %s !",res,error.message);
+		struct rte_flow_error error;
+		rte_eth_dev_stop(port_id);
+		//rte_eth_promiscuous_disable(port_id);
+		int res = rte_flow_isolate(port_id, 1, &error);
+		if (res != 0)
+			errh->warning("Warning %d : Could not set isolated mode because %s !",res,error.message);
 
-    rte_eth_dev_start(port_id);
-    for (int i = 0; i < _table.size(); i++) {
+		rte_eth_dev_start(port_id);
+    }
+
+	for (int i = 0; i < _table.size(); i++) {
+
 		_table[i] = i % startwith;
 	}
-    click_chatter("RSS initialized");
-    int err = BalanceMethodDPDK::initialize(errh, startwith);
+
+    click_chatter("RSS initialized with %d CPUs", startwith);
+    int err = BalanceMethodDevice::initialize(errh, startwith);
     if (err != 0)
         return err;
 
-    if (!update_reta_flow(true)) {
-        _update_reta_flow = false;
-        click_chatter("RETA update method is global");
-        update_reta(true);
-    } else  {
-        _update_reta_flow = true;
-        click_chatter("RETA update method is flow");
+    _update_reta_flow = true;
+    if (_is_dpdk) {
+		if (!update_reta_flow(true)) {
+			_update_reta_flow = false;
+			if (_fd->set_rss_reta(_fd, _table) != 0)
+                return errh->error("Neither flow RSS or global RSS works to program the RSS table.");
+		} else
+	        click_chatter("RETA update method is flow");
+    } else {
+	_update_reta_flow = false;
+
+        if (_fd->set_rss_reta(_fd, _table) != 0)
+            return errh->error("Cannot program the RSS table.");
+    }
+    if (!_update_reta_flow)  {
+	click_chatter("RETA update method is global");
+
     }
     return err;
 }
@@ -351,12 +388,13 @@ int BalanceMethodRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
 	Element* e = 0;
 	if (Args(balancer, errh).bind(conf)
 			.read("VERIFIER", e)
+			.read_or_set("RETA_SIZE", _reta_size, 128)
 			.consume() < 0)
 		return -1;
 	if (e) {
 		_verifier = (RSSVerifier*)e->cast("RSSVerifier");
 		if (!_verifier)
-			return errh->error("Counter must be of the type AggregateCounterVector");
+			return errh->error("Verifier must be of the type RSSVerifier");
 	}
 	return 0;
 }
@@ -376,11 +414,22 @@ void MethodRSSRR::rebalance(Vector<Pair<int,float>> load) {
 /**
  * Piano RSS
  */
+MethodPianoRSS::MethodPianoRSS(DeviceBalancer* b, Element* fd, String config) : BalanceMethodRSS(b,fd) {
+}
+
 
 int MethodPianoRSS::initialize(ErrorHandler* errh, int startwith) {
     if (BalanceMethodRSS::initialize(errh, startwith) != 0)
         return -1;
     load_tracker_initialize(errh);
+
+    if (_counter_is_xdp) {
+	click_chatter("Resizing counte to %d",_reta_size);
+		_count.resize(_reta_size);
+		_xdp_table_fd = ((XDPLoader*)_counter)->get_map_fd("count_map");
+		if (!_xdp_table_fd)
+			return errh->error("Could not find map !");
+    }
     return 0;
 }
 #define EPSILON 0.0001f
@@ -421,7 +470,21 @@ class Problem
 		tryK(0);
 	}
 
+    /**
+     * Problem of this method:
+     * If all sending cores have quite big buckets, then correction may lead to all
+     * cores having too low corrected transfer so no bucket will move. Moving some
+     * of them would probably be best.
+     *
+     * One solution is to consider all buckets that fit the correction, then select a subset
+     * that min the invariance of the moving set.
+     *
+     * But that's again a bad minimization
+     *
+     * So if no buckets were moved, we do a second pass without the correction
+     */
 	Vector<float> fixedTransfert() {
+        //See above
 		float newload[N] = {0.0f};
 		for (int c = 0; c < N; c++) { //Sum of imbalance for all cores
 			newload[transfer[c]] += imbalance[c];
@@ -436,7 +499,7 @@ class Problem
 		// c1 and c2 will give all to c0, but c0 will become overloaded by -0.03.
 		//Let's share the final imbalance to -0.03/3, so every of those are at -0.01
 						//
-		for (int c = 0; c < N; c++) {
+		for (int c = 0; c < N; c++) { //C is the receiving core, ie, for each receiving core C
 			if (newload[c] < 0) {
 
 				int nsources = 0;
@@ -615,6 +678,32 @@ class Load { public:
 void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     click_jiffies_t now = click_jiffies();
 
+    if (_counter_is_xdp) {
+	click_chatter("Reading XDP table");
+	int cpus = balancer->_max_cpus;
+	unsigned int nr_cpus = bpf_num_possible_cpus();
+	uint64_t values[nr_cpus];
+	    for (uint32_t key = 0; key < _count.size(); key++) {
+	        if (bpf_map_lookup_elem(_xdp_table_fd, &key, values)) {
+			click_chatter("XDP lookup failed");
+			continue;
+	        }
+			uint64_t tot = 0;
+		    for (int i = 0; i < nr_cpus; i++) {
+			//	tot += values[_table[key]];
+                tot += values[i];
+			}
+            tot -= _count[key].count;
+			click_chatter("Key %d core %d val %d",key,_table[key], tot);
+			_count[key].variance  = (_count[key].variance  / 3) + (2 * tot / 3);
+			_count[key].count  = tot;
+
+	    }
+    }
+
+#define get_node_count(i) ((_counter_is_xdp)?_count.unchecked_at(i).count:((AggregateCounterVector*)_counter)->find_node_nocheck(i).count)
+#define get_node_variance(i) ((_counter_is_xdp)?_count.unchecked_at(i).variance:((AggregateCounterVector*)_counter)->find_node_nocheck(i).variance)
+
 /*
     uint64_t total_packets = 0;
     for (int i = 0; i < _table.size(); i++) {
@@ -680,7 +769,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 
     //Count the number of packets for this core
 	for (int j = 0; j < _table.size(); j++) {
-		unsigned long long c = _counter->find_node(j).count;
+		unsigned long long c = get_node_count(j);
 		load[map_phys_to_id[_table[j]]].npackets += c;
 	}
 
@@ -719,7 +808,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 			//Compute load for each buckets
 			for (int i = 0; i < buckets_indexes.size(); i++) {
 				int j = buckets_indexes[i];
-				double c = _counter->find_node(j).count;
+				double c = get_node_count(j);
 				cp.buckets_load[i] = (((double) c / (double)totcount)*min_core_load);
 				//click_chatter("Bucket %d (%d) load %f", i ,j, cp.buckets_load[i]);
 			}
@@ -751,7 +840,8 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 			Timestamp t = Timestamp::now_steady();
 			click_chatter("Solution computed in %d usec", (t-begin).usecval());
 			update_reta();
-			_counter->advance_epoch();
+			if (!_counter_is_xdp)
+				((AggregateCounterVector*)_counter)->advance_epoch();
 			return;
 
         } else if (suppload < -0.1) { //We need a new core because the total load even with perfect spread incurs 10% overload
@@ -784,7 +874,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 	if (unlikely(balancer->_verbose))
 		click_chatter("Has high load !");
 		for (int j = 0; j < _table.size(); j++) {
-			unsigned long long c = _counter->find_node(j).count;
+			unsigned long long c = get_node_count(j);
 			unsigned phys_id = _table[j];
 			unsigned id = map_phys_to_id[phys_id];
 			if (!load[id].high || load[id].npackets == 0)
@@ -833,21 +923,35 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
      * We minimize the overall imbalance by moving some buckets from each cores to other cores
      */
     if (p.oid.size() > 0) {
-	bool moved = false;
-		float min_cost = p.N * p.N;
+	    bool moved = false;
+
+        //Set problem parameters
+        float min_cost = p.N * p.N;
 		p.transfer.resize(p.N);
 		for (unsigned i = 0; i < p.N; i++) {
 			p.transfer[i] = i;//Default is to transfer load to itself
 		}
 		p.min_cost = p.N;
-		p.solve();
-		Vector<float> fT = p.fixedTransfert();
+
+        //Solve assignment of imbalance of overloaded -> underloaded
+        p.solve();
+
+        //We "correct" the imbalance. Indeed even from the best solution, moving overloaded
+        // to underloaded may lead to a unoptimal local scenario, we could move just
+        // a little less of every overloaded core to the single underloaded
+        Vector<float> fT = p.fixedTransfert();
+
 
 		if (unlikely(balancer->_verbose))
 			click_chatter("Transfer solution for %d uid, %d oid:",p.uid.size(), p.oid.size());
-		for (unsigned i = 0; i < p.N; i++) {
+
+        //We start at a random core index, as the first cores to be balanced may be advantaged
+	    int iRand = click_random();
+
+		for (unsigned iOffset = 0; iOffset < p.N; iOffset++) {
+            unsigned i = (iRand + iOffset) % p.N;
 			if (unlikely(balancer->_verbose))
-				click_chatter("Core %d (load %f, imbalance %f (corr %f)) -> %d (load %f)", i, load[i].load, p.imbalance[i], fT[i], p.transfer[i], load[p.transfer[i]].load);
+				click_chatter("Core %d (load %f, imbalance %f (corr %f)) -> %d (load %f)", i, load[i].load, p.imbalance[i], -1, p.transfer[i], load[p.transfer[i]].load);
 			if ((unsigned)p.transfer[i] == i)
 				continue;
 
@@ -871,6 +975,9 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 				int flows;
 			}*/
 			//Vector<BucketInfo> q;
+
+            //We find all buckets of this core, starting at a random point, so we do not
+            //always move the same ones
 			Vector<Pair<int,float> > q; //List of (i core) bucket->load
 			int j = click_random() % _table.size();
 			for (int r = 0; r < _table.size(); r++) {
@@ -878,10 +985,10 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 					j = 0;
 				if (map_phys_to_id[_table[j]] == i) {
 
-					uint64_t cu = _counter->find_node(j).count;
+					uint64_t cu = get_node_count(j);
 					core_tot += cu;
                     double c = cu;
-                    double p = _counter->find_node(j).variance;
+                    double p = get_node_variance(j);
 					double var;
 					double m = max(c,p);
 					if (m == 0) {
@@ -897,10 +1004,14 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 					cn++;
 				}
 			}
+
+reagain:
 			int n = 0;
+            int nSkipped = 0;
 			float tot_bload = 0;
 			float tot_bpc = 0;
 			int qsz = q.size();
+
 			/**
 			 * We cannot leave the core with only a high variance bucket
 			 * We want :
@@ -918,7 +1029,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 				float var = q.back().second;
 				q.pop_back();
 
-				double c = (double)_counter->find_node(j).count;
+				double c = (double)get_node_count(j);
 
 				double bpc = ((c * var) / core_tot_min); //Percentage of all flows seen (minimum load observed)
                 //click_chatter("ctm %f bpc %f, load %f",core_tot_min,bpc,load[i].load);
@@ -932,8 +1043,10 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 						miss =true;
 					}
 					if (unlikely(balancer->_verbose > 1)) {
-						click_chatter("Skipping bucket %d var %f, load %f%% (min %f%% of bucket, %f%% real), imbalance %f, at least %d flows",j, var, bload*100, bpc*100, ((c * 100.0)/core_tot),p.imbalance[i]*fT[i],_counter->find_node(j).flows);
+						click_chatter("Skipping bucket %d var %f, load %f%% (min %f%% of bucket, %f%% real), imbalance %f, corrected imbalance %f, at least %d flows",j, var, bload*100, bpc*100, ((c * 100.0)/core_tot),p.imbalance[i], p.imbalance[i]*fT[i],-1);//get_node(j).flows);
                     }
+                    if (bload < -p.imbalance[i] && bload < 0.5)
+                        nSkipped ++;
                         /*
 						left_max += bload * (1 + var);
 						left += bload;
@@ -961,6 +1074,13 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 					assert(false);
 				}*/
 			}
+            if (n == 0 && nSkipped > 0) {
+                fT[i] = 1;
+                //goto reagain;
+                //We did not move any bucket, but we skipped some that were in without the correction
+                //we re-do a pass and move those ones.
+                //TODO : we should do this on the highly overloaded first, and re-compute the correction each time we force a move
+            }
 			if (unlikely(balancer->_verbose))
 				click_chatter("Moving %d/%d/%d buckets (%f%% of load, %f%% of buckets). Core has seen %llu packets.", n, qsz, cn,  tot_bload *100, tot_bpc*100, core_tot);
 		} //For each cores
@@ -981,11 +1101,17 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 		}
    }
     assert(_counter);
-    _counter->advance_epoch();
+	if (!_counter_is_xdp)
+		((AggregateCounterVector*)_counter)->advance_epoch();
+	else {
+
+
+
+	}
 }
 
 bool BalanceMethodRSS::update_reta_flow(bool validate) {
-		int port_id = _fd->get_device()->port_id;
+		int port_id = ((DPDKDevice*)_fd)->port_id;
 		struct rte_flow_attr attr;
 		    Vector<rte_flow*> newflows;
              int tot;
@@ -1096,24 +1222,27 @@ int aid = 0;
          return true;
 
 }
-void BalanceMethodRSS::update_reta(bool validate) {
+bool BalanceMethodRSS::update_reta(bool validate) {
     Timestamp t = Timestamp::now_steady();
 	if (_verifier) {
 		_verifier->_table = _table;
 	}
 	if (_update_reta_flow) {
-        update_reta_flow(validate);
+        if (!update_reta_flow(validate))
+            return false;
     } else {
-        _fd->get_device()->set_rss_reta(_table);
+        if (!_fd->set_rss_reta(_fd, _table))
+            return false;
     }
 
 	Timestamp s = Timestamp::now_steady();
     if (validate || balancer->_verbose)
 	click_chatter("Reta updated in %d usec",(s-t).usecval());
+    return true;
 }
 
 int MethodPianoRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
-	Element* e;
+	Element* e = 0;
 	double t;
 	double i;
 	if (Args(balancer, errh).bind(conf)
@@ -1124,10 +1253,29 @@ int MethodPianoRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
 		return -1;
 	_target_load = t;
 	_imbalance_alpha = i;
-	_counter = (AggregateCounterVector*)e->cast("AggregateCounterVector");
-	if (!_counter)
-		return errh->error("Counter must be of the type AggregateCounterVector");
-	return BalanceMethodRSS::configure(conf, errh);
+
+
+
+	int err = BalanceMethodRSS::configure(conf, errh);
+	if (err != 0)
+		return err;
+
+	//Reta_size must be set before this
+	if (e) {
+		_counter = (AggregateCounterVector*)e->cast("AggregateCounterVector");
+		if (!_counter) {
+			_counter = (XDPLoader*)e->cast("XDPLoader");
+			if (!_counter) {
+				return errh->error("Counter must be of the type AggregateCounterVector or XDPLoader");
+			}
+			_counter_is_xdp = true;
+		} else {
+            _counter_is_xdp = false;
+        }
+	} else {
+        return errh->error("You must set a RSSCOUNTER element");
+    }
+	return 0;
 }
 
 
@@ -1162,7 +1310,7 @@ void DeviceBalancer::removeCore(int remove_phys_id) {
 
 int
 DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
-    Element* dev;
+    Element* dev = 0;
     String config;
     String method;
     String target;
@@ -1197,6 +1345,9 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
 	_load = LOAD_CPU;
     } else  if (cycles == "queue") {
 		_load = LOAD_QUEUE;
+    } else  if (cycles == "realcpu") {
+	_cpustats.resize(_max_cpus);
+		_load = LOAD_REALCPU;
 	} else {
 		return errh->error("Unknown cycle method !");
 	}
@@ -1229,6 +1380,11 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
     if (_method->configure(conf,errh) !=0)
 	return -1;
 
+    if (Args(this, errh).bind(conf)
+            .complete() < 0)
+        return -1;
+
+
     return 0;
 }
 
@@ -1248,6 +1404,8 @@ DeviceBalancer::initialize(ErrorHandler *errh) {
     _timer.schedule_after_msec(_tick);
     return 0;
 }
+
+
 
 void
 DeviceBalancer::run_timer(Timer* t) {
@@ -1309,9 +1467,9 @@ DeviceBalancer::run_timer(Timer* t) {
 		}
 
 		if (_load == LOAD_CYCLES_THEN_QUEUE && overloaded > 1) {
-	        FromDPDKDevice* fd = ((BalanceMethodDPDK*)_method)->_fd;
-	        int port_id = fd->get_device()->port_id;
-	        float rxdesc = fd->get_nb_desc();
+	        DPDKDevice* fd = (DPDKDevice*)((BalanceMethodDevice*)_method)->_fd;
+	        int port_id = fd->port_id;
+	        float rxdesc = fd->get_nb_rxdesc();
 	        for (int u = 0; u < _used_cpus.size(); u++) {
 	            int i = _used_cpus[u].id;
 	            int v = rte_eth_rx_queue_count(port_id, i);
@@ -1325,11 +1483,39 @@ DeviceBalancer::run_timer(Timer* t) {
 	            load[u].second = load[u].second * 0.90 + 0.10 * l;
 	        }
 		}
-	//
+    } else if (_load == LOAD_REALCPU) {
+        Vector<float> l(_max_cpus, 0);
+        unsigned long long totalUser, totalUserLow, totalSys, totalIdle;
+        int cpuId;
+        FILE* file = fopen("/proc/stat", "r");
+        char buffer[1024];
+        char *res = fgets(buffer, 1024, file);
+        assert(res);
+        while (fscanf(file, "cpu%d %llu %llu %llu %llu", &cpuId, &totalUser, &totalUserLow, &totalSys, &totalIdle) > 0) {
+		if (cpuId < l.size()) {
+                unsigned long long newTotal = totalUser + totalUserLow + totalSys;
+                unsigned long long tdiff =  (newTotal - _cpustats[cpuId].lastTotal);
+                unsigned long long idiff =  (totalIdle - _cpustats[cpuId].lastIdle);
+                if (tdiff + idiff > 0)
+                    l[cpuId] =  (float)tdiff / (float)(tdiff + idiff);
+                _cpustats[cpuId].lastTotal = newTotal;
+                _cpustats[cpuId].lastIdle = totalIdle;
+                //click_chatter("C %d total %d %d %d",cpuId,newTotal,tdiff, idiff);
+                res = fgets(buffer, 1024, file);
+            }
+        }
+        fclose(file);
+        for (int u = 0; u < _used_cpus.size(); u++) {
+		//click_chatter("Used %d load %f",u,l[u]);
+		int i = _used_cpus[u].id;
+			float cl = l[i];
+			load.push_back(Pair<int,float>{i,cl});
+			totload += cl;
+        }
     } else { //_load == LOAD_QUEUE
-        FromDPDKDevice* fd = ((BalanceMethodDPDK*)_method)->_fd;
-        int port_id = fd->get_device()->port_id;
-        float rxdesc = fd->get_nb_desc();
+        DPDKDevice* fd = (DPDKDevice*)((BalanceMethodDevice*)_method)->_fd;
+        int port_id = fd->port_id;
+        float rxdesc = fd->get_nb_rxdesc();
         for (int u = 0; u < _used_cpus.size(); u++) {
             int i = _used_cpus[u].id;
             int v = rte_eth_rx_queue_count(port_id, i);
@@ -1338,7 +1524,17 @@ DeviceBalancer::run_timer(Timer* t) {
             totload += l;
         }
     }
-    if (_target == TARGET_BALANCE) {
+
+    if (unlikely(_verbose > 1)) {
+	String s = "load ";
+	for (int u = 0; u < load.size(); u++) {
+		s += String(load[u].second) + " ";
+	}
+	s += "\n";
+	click_chatter("%s",s.c_str());
+    }
+
+    if (unlikely(_target == TARGET_BALANCE)) {
         float target = totload / _max_cpus;
         for (int i = 0; i < load.size(); i ++) {
             if (target < 0.1)
@@ -1362,6 +1558,11 @@ DeviceBalancer::run_timer(Timer* t) {
 
     }
 
+ /*   assert(_method);
+    assert(load.size() > 0);
+    for (int i = 0; i < load.size(); i++) {
+	click_chatter("Load of core %d is %f",load[i].first,load[i].second);
+    }*/
     _method->rebalance(load);
     _timer.reschedule_after_msec(_tick);
 }
