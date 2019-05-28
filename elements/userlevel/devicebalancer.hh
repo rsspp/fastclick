@@ -161,6 +161,8 @@ public:
     BalanceMethod* _method;
     int _core_offset;
     int _tick;
+    int _tick_max;
+    int _current_tick;
     Timer _timer;
     int _max_cpus;
     target_method _target;

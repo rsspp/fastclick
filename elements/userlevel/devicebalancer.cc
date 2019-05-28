@@ -745,7 +745,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
         _past_load[cpuid] = load[j].load;
         float diff = target_load - load[j].load; // >0 if underloaded diff->quantity to add
         if (abs(diff) <= _threshold)
-		diff = 0;
+		    diff = 0;
         if (load[j].load > _target_load) {
 			has_high_load = true;
 			load[j].high = true;
@@ -763,7 +763,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     suppload = (p.N *_target_load) - totalload; //Total power that we have in excess
 
     if (unlikely(balancer->_verbose))
-	click_chatter("Target %f. Total load %f. %d cores. Suppload %f", p.target, totalload, p.N, suppload);
+	    click_chatter("Target %f. Total load %f. %d cores. Suppload %f", p.target, totalload, p.N, suppload);
 
     p.imbalance.resize(p.N);
 
@@ -871,8 +871,8 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
      * We move the bucket that have more load than XXX 50% to other cores
      */
     if (has_high_load) {
-	if (unlikely(balancer->_verbose))
-		click_chatter("Has high load !");
+	    if (unlikely(balancer->_verbose))
+		    click_chatter("Has high load !");
 		for (int j = 0; j < _table.size(); j++) {
 			unsigned long long c = get_node_count(j);
 			unsigned phys_id = _table[j];
@@ -903,27 +903,27 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     }
 
     //high and npackets are not valid anymore
+    float total_imbalance = 0;
 
-     //Compute the imbalance
-     for (unsigned i = 0; i < p.N; i++) {
-		p.imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (p.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].load) / 2.0f);
+    //Compute the imbalance
+    for (unsigned i = 0; i < p.N; i++) {
+		p.imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (p.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].load) / 2.0f);i
+        total_imbalance += abs(p.imbalance[i]);
 
 		if (p.imbalance[i] > _threshold)
 			p.uid.push_back(i);
 		else if (p.imbalance[i] < - _threshold) {
 			p.oid.push_back(i);
 		}
-     }
+    }
 
 
-
-
+	bool moved = false;
     /**
      * Re-balancing
      * We minimize the overall imbalance by moving some buckets from each cores to other cores
      */
     if (p.oid.size() > 0) {
-	    bool moved = false;
 
         //Set problem parameters
         float min_cost = p.N * p.N;
@@ -951,7 +951,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 		for (unsigned iOffset = 0; iOffset < p.N; iOffset++) {
             unsigned i = (iRand + iOffset) % p.N;
 			if (unlikely(balancer->_verbose))
-				click_chatter("Core %d (load %f, imbalance %f (corr %f)) -> %d (load %f)", i, load[i].load, p.imbalance[i], -1, p.transfer[i], load[p.transfer[i]].load);
+				click_chatter("Core %d (load %f, imbalance %f (corr %f)) -> %d (load %f)", i, load[i].load, p.imbalance[i], fT[i], p.transfer[i], load[p.transfer[i]].load);
 			if ((unsigned)p.transfer[i] == i)
 				continue;
 
@@ -1085,7 +1085,9 @@ reagain:
 				click_chatter("Moving %d/%d/%d buckets (%f%% of load, %f%% of buckets). Core has seen %llu packets.", n, qsz, cn,  tot_bload *100, tot_bpc*100, core_tot);
 		} //For each cores
 
-        for (unsigned i =0; i < p.N;i ++) {
+        total_imbalance = 0;
+        for (unsigned i = 0; i < p.N; i++) {
+            total_imbalance += abs(p.imbalance[i]);
 			if (abs(p.imbalance[i]) > _threshold) {
 				if (unlikely(balancer->_verbose))
 					click_chatter("Imbalance of core %d left to %f, that's quite a MISS.", i, p.imbalance[i]);
@@ -1099,15 +1101,28 @@ reagain:
 				click_chatter("Solution computed in %d usec", v);
 			update_reta();
 		}
-   }
-    assert(_counter);
+    }
+
 	if (!_counter_is_xdp)
 		((AggregateCounterVector*)_counter)->advance_epoch();
 	else {
-
-
-
+        //TODO : clean XDP? We compute a diff, seems enough
 	}
+
+    //Change the speed of ticks if necessary
+    if (total_imbalance > 0.2) {
+        if (total_imbalance > 0.4)
+            balancer->_current_tick = balancer->_tick;
+        else
+            balancer->_current_tick /= 2;
+    } else if (!moved)
+        balancer->_current_tick *= 2;
+
+    if (balancer->_current_tick > balancer->_tick_max)
+        balancer->_current_tick = balancer->_tick_max;
+    if (balancer->_current_tick < balancer->_tick)
+        balancer->_current_tick = balancer->_tick;
+
 }
 
 bool BalanceMethodRSS::update_reta_flow(bool validate) {
@@ -1323,7 +1338,8 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
         .read_mp("DEV", dev)
         .read_or_set("CONFIG", config, "")
         .read_or_set("CORE_OFFSET", _core_offset, 0)
-        .read_or_set("TIMER", _tick, 500)
+        .read_or_set("TIMER", _tick, 100)
+        .read_or_set("TIMER_MAX", _tick_max, 1000)
         .read_or_set("CPUS", _max_cpus, click_max_cpu_ids())
         .read_or_set("TARGET", target, "load")
         .read_or_set("STARTCPU", startcpu, -1)
@@ -1401,7 +1417,8 @@ DeviceBalancer::initialize(ErrorHandler *errh) {
        _available_cpus.push_back(i);
     }
     _timer.initialize(this);
-    _timer.schedule_after_msec(_tick);
+    _current_tick = _tick;
+    _timer.schedule_after_msec(_current_tick);
     return 0;
 }
 
@@ -1563,8 +1580,7 @@ DeviceBalancer::run_timer(Timer* t) {
     for (int i = 0; i < load.size(); i++) {
 	click_chatter("Load of core %d is %f",load[i].first,load[i].second);
     }*/
-    _method->rebalance(load);
-    _timer.reschedule_after_msec(_tick);
+    _timer.reschedule_after_msec(_current_tick);
 }
 
 DeviceBalancer::CpuInfo
