@@ -193,6 +193,17 @@ else
     LIBS="$save_libs"
 fi
 
+AC_SEARCH_LIBS([elf_version], [elf], [ac_have_elf=yes], [ac_have_elf=no])
+
+
+AC_SEARCH_LIBS([bpf_prog_load_xattr], [bpf], [ac_have_libbpf=yes], [ac_have_libbpf=no])
+AC_CHECK_HEADERS([bpf/bpf.h], [ac_have_libbpf_h=yes], [ac_have_libbpf_h=no])
+if test "x$ac_have_libbpf$ac_have_libbpf_h" = "xyesyes"; then
+    AC_DEFINE([HAVE_LIBBPF])
+    have_libbpf=yes
+else
+    have_libbpf=no
+fi
 
 AC_SEARCH_LIBS([MHD_start_daemon], [microhttpd], [ac_have_libmicrohttpd=yes], [ac_have_libmicrohttpd=no])
 AC_CHECK_HEADERS([microhttpd.h], [ac_have_microhttpd_h=yes], [ac_have_microhttpd_h=no])
@@ -2291,11 +2302,15 @@ if test "x$enable_batch" = xyes; then
     provisions="$provisions batch"
 fi
 
+dnl add 'bpf' if libbpf support is available
+if test "$ac_have_libbpf$ac_have_libbpf_h" = yesyes; then
+    provisions="$provisions bpf"
+fi
+
 dnl add 'dpdk' if compiled with --enable-dpdk
 if test "x$enable_dpdk" = xyes; then
     provisions="$provisions dpdk"
 fi
-
 
 dnl add 'experimental' if --enable-experimental was supplied
 if test "x$enable_experimental" = xyes; then
@@ -2456,6 +2471,7 @@ Configuration Summary:
 
     PAPI support:                ${have_papi}
     RE2 support:                 ${have_re2}
+    BPF support:                 ${have_libbpf}
 "
 
 if test "$feedback" != no; then
