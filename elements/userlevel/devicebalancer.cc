@@ -1332,6 +1332,7 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
         .read_or_set("LOAD", load, "cpu")
 		.read_or_set("CYCLES", cycles, "cycles")
 		.read_or_set("AUTOSCALE", _autoscale, false)
+		.read_or_set("ACTIVE", _active, true)
 		.read_or_set("VERBOSE", _verbose, true)
         .consume() < 0)
         return -1;
@@ -1401,7 +1402,8 @@ DeviceBalancer::initialize(ErrorHandler *errh) {
        _available_cpus.push_back(i);
     }
     _timer.initialize(this);
-    _timer.schedule_after_msec(_tick);
+    if (_active)
+	_timer.schedule_after_msec(_tick);
     return 0;
 }
 
@@ -1564,7 +1566,8 @@ DeviceBalancer::run_timer(Timer* t) {
 	click_chatter("Load of core %d is %f",load[i].first,load[i].second);
     }*/
     _method->rebalance(load);
-    _timer.reschedule_after_msec(_tick);
+    if (_active)
+	_timer.reschedule_after_msec(_tick);
 }
 
 DeviceBalancer::CpuInfo
@@ -1573,6 +1576,60 @@ DeviceBalancer::make_info(int _id) {
 	i.id = _id;
 	i.last_cycles = master()->thread(_id)->useful_kcycles();
 	return i;
+}
+
+
+enum {h_active, h_autoscale};
+
+
+String
+DeviceBalancer::read_param(Element *e, void *thunk)
+{
+	DeviceBalancer *td = (DeviceBalancer *)e;
+    switch((uintptr_t) thunk) {
+    case h_active:
+        return String(td->_active);
+    case h_autoscale:
+        return String(td->_autoscale);
+    default:
+        return String();
+    }
+}
+
+int
+DeviceBalancer::write_param(const String &in_s, Element *e, void *vparam,
+                     ErrorHandler *errh)
+{
+	DeviceBalancer *td = (DeviceBalancer *)e;
+    String s = cp_uncomment(in_s);
+    switch ((intptr_t)vparam) {
+    case h_active: {
+        bool active;
+        if (!BoolArg().parse(s, active))
+            return errh->error("type mismatch");
+        td->_active = active;
+        if (active)
+		td->_timer.schedule_after_msec(_tick);
+        break;
+    }
+    case h_autoscale: {
+        bool active;
+        if (!BoolArg().parse(s, active))
+            return errh->error("type mismatch");
+        td->_autoscale = active;
+        break;
+    }
+    }
+    return 0;
+}
+
+void
+DeviceBalancer::add_handlers()
+{
+    add_read_handler("active", read_param, h_active, Handler::CHECKBOX);
+    add_read_handler("autoscale", read_param, h_autoscale, Handler::CHECKBOX);
+    add_write_handler("active", write_param, h_active);
+    add_write_handler("autoscale", write_param, h_autoscale);
 }
 
 
