@@ -28,6 +28,7 @@ class LoadTracker {
     int load_tracker_initialize(ErrorHandler* errh);
 
     Vector<float> _past_load;
+    Vector<bool> _moved;
     Vector<click_jiffies_t> _last_movement;
 
 };
@@ -117,6 +118,7 @@ private:
     struct Node {
 	uint64_t count;
 	uint64_t variance;
+	bool moved;
     };
     Vector<Node> _count;
 
@@ -126,6 +128,7 @@ private:
 
     float _target_load;
     float _imbalance_alpha;
+    float _threshold;
 };
 
 /*

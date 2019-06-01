@@ -17,6 +17,7 @@ XDPLoader::configure(Vector<String> &conf, ErrorHandler *errh) {
     if (Args(this, errh).bind(conf)
         .read_mp("PATH", _path)
         .read_mp("DEV", _dev)
+        .read_or_set("CLEAN", _do_clean, true)
         .consume() < 0)
         return -1;
 
@@ -83,7 +84,8 @@ XDPLoader::initialize(ErrorHandler *errh) {
 void
 XDPLoader::cleanup(CleanupStage stage) {
     // cleaning-up
-    bpf_set_link_xdp_fd(_ifindex, -1, 0);
+    if (_do_clean)
+        bpf_set_link_xdp_fd(_ifindex, -1, 0);
 }
 
 ELEMENT_REQUIRES(bpf)

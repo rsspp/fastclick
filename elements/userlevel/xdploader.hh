@@ -43,14 +43,16 @@ public:
 
     Vector<unsigned> read_per_cpu_array(int table_fd, int size, int cpus);
 
-     int get_map_fd(String name);
+    int get_map_fd(String name);
 
 private:
     String _path;
     String _dev;
     int _ifindex;
     struct bpf_object* _obj;
+    bool _do_clean;
 };
+
 static inline unsigned int bpf_num_possible_cpus(void)
 {
         static const char *fcpu = "/sys/devices/system/cpu/possible";
