@@ -152,10 +152,10 @@ public:
 
     bool can_live_reconfigure() const { return false; }
 
-    int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
-    int initialize(ErrorHandler *) CLICK_COLD;
-/*    void add_handlers() CLICK_COLD;
-    void cleanup(CleanupStage) CLICK_COLD;*/
+    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
+    int initialize(ErrorHandler *) override CLICK_COLD;
+    void add_handlers() override CLICK_COLD;
+   /*     void cleanup(CleanupStage) CLICK_COLD;*/
 
     void run_timer(Timer* t) override;
 
@@ -171,6 +171,7 @@ public:
     target_method _target;
     load_method _load;
     int _startwith;
+    bool _active;
     bool _autoscale;
 
 
@@ -182,7 +183,7 @@ public:
         unsigned long long lastIdle;
     };
 
-            Vector<CPUStat> _cpustats;
+    Vector<CPUStat> _cpustats;
 
     int _verbose;
 
@@ -198,6 +199,11 @@ public:
     Vector<int> _available_cpus;
     double _overloaded_thresh = 0.75;
     double _underloaded_thresh = 0.25;
+private:
+    static int write_param(const String &in_s, Element *e, void *vparam, ErrorHandler *errh) CLICK_COLD;
+    static String read_param(Element *e, void *thunk) CLICK_COLD;
+
+
 };
 
 CLICK_ENDDECLS
