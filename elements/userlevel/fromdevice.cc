@@ -344,6 +344,7 @@ FromDevice::initialize(ErrorHandler *errh)
     if (!_ifname)
         return errh->error("interface not set");
 
+    if (_active) {
 #if FROMDEVICE_ALLOW_PCAP
     if (_method == method_default || _method == method_pcap) {
         assert(!_pcap);
@@ -438,6 +439,7 @@ FromDevice::initialize(ErrorHandler *errh)
     if (_method == method_pcap)
         ScheduleInfo::initialize_task(this, &_task, false, errh);
 #endif
+
 #if FROMDEVICE_ALLOW_PCAP || FROMDEVICE_ALLOW_LINUX
     if (_fd >= 0 && _active)
         add_select(_fd, SELECT_READ);
@@ -447,6 +449,7 @@ FromDevice::initialize(ErrorHandler *errh)
         if (KernelFilter::device_filter(_ifname, true, errh) < 0)
             _sniffer = true;
 
+    }
     return 0;
 }
 
