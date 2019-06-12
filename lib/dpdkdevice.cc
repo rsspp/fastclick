@@ -735,6 +735,13 @@ int DPDKDevice::initialize_device(ErrorHandler *errh)
         }
     }
 
+    if (info.init_isolate) {
+        rte_flow_error error;
+        if (rte_flow_isolate(port_id, info.init_isolate, &error) != 0) {
+            return errh->error("Could not set flow isolation : %s", error.message );
+        }
+    }
+
     int err = rte_eth_dev_start(port_id);
     if (err < 0)
         return errh->error(
@@ -849,6 +856,11 @@ void DPDKDevice::set_init_fc_mode(FlowControlMode fc) {
     assert(!_is_initialized);
     info.init_fc_mode = fc;
 }
+
+void DPDKDevice::set_init_isolate(bool isolate) {
+    info.init_isolate = isolate;
+}
+
 
 
 EtherAddress DPDKDevice::get_mac() {

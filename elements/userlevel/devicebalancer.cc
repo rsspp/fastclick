@@ -1358,9 +1358,9 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 	bool moved = false;
     /**
      * Re-balancing
-     * We minimize the overall imbalance by moving some buckets from each cores to other cores
+     * We minimize the overall imbalance by moving some buckets from overloaded cores to underloaded cores
      */
-    if (p.oid.size() > 0) {
+    if (p.oid.size() > 0 && p.uid.size() > 0) {
 
 #ifndef BALANCE_TWO_PASS
 
@@ -1408,9 +1408,9 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 			pm.max[i] = -p.imbalance[p.oid[i]];
 		}
 
-
 		pm.solve(balancer);
 
+		Vector<Vector<Pair<int,int>>> omoves(p.oid.size(), Vector<Pair<int,int>>());
 		for (int i = 0; i < pm.buckets_load.size(); i++) {
 			int to_uid = pm.transfer[i];
 			if (to_uid == -1) continue;
@@ -1423,11 +1423,22 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 			p.imbalance[to_cpu] -= pm.buckets_load[i];
 
             if (unlikely(balancer->_verbose))
-			click_chatter("Move bucket %d to core %d",buckets_indexes[i].bucket_id,load[to_cpu].cpu_phys_id);
+			    click_chatter("Move bucket %d to core %d",buckets_indexes[i].bucket_id,load[to_cpu].cpu_phys_id);
+
+            if (balancer->_manager) {
+		omoves[pm.buckets_max_idx[i]].push_back(Pair<int,int>(buckets_indexes[i].bucket_id, load[to_cpu].cpu_phys_id));
+            }
 			_table[buckets_indexes[i].bucket_id] = load[to_cpu].cpu_phys_id;
+
 			_moved[load[to_cpu].cpu_phys_id] = true;
 			moved = true;
-
+		}
+		if (balancer->_manager) {
+			for (int i = 0; i < p.oid.size(); i++) {
+				if (omoves[i].size() > 0) {
+					balancer->_manager->migrate((DPDKDevice*)_fd,load[p.oid[i]].cpu_phys_id,omoves[i]);
+				}
+			}
 		}
 
 #else

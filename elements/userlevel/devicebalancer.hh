@@ -179,9 +179,8 @@ public:
 
 
     struct CPUStat {
-	CPUStat() : lastTotal(0), lastIdle(0) {
-
-	}
+		CPUStat() : lastTotal(0), lastIdle(0) {
+		}
         unsigned long long lastTotal;
         unsigned long long lastIdle;
     };

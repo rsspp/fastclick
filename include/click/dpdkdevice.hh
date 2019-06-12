@@ -84,7 +84,9 @@ public:
             num_pools(0), vf_vlan(),
             vlan_filter(false), vlan_strip(false),
             mq_mode((enum rte_eth_rx_mq_mode)-1), mq_mode_str(""),
-            init_mac(), init_mtu(0), init_rss(-1), init_fc_mode(FC_UNSET) {
+            init_mac(), init_mtu(0), init_rss(-1), init_fc_mode(FC_UNSET),
+            init_isolate(false)
+        {
             rx_queues.reserve(128);
             tx_queues.reserve(128);
         }
@@ -123,6 +125,7 @@ public:
         uint16_t init_mtu;
         int init_rss;
         FlowControlMode init_fc_mode;
+        bool init_isolate;
     };
 
 #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
@@ -149,7 +152,7 @@ public:
     void set_init_mtu(uint16_t mtu);
     void set_init_rss_max(int rss_max);
     void set_init_fc_mode(FlowControlMode fc);
-
+    void set_init_isolate(bool isolate);
 
     unsigned int get_nb_rxdesc();
     unsigned int get_nb_txdesc();

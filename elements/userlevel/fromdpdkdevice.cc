@@ -81,6 +81,7 @@ int FromDPDKDevice::configure(Vector<String> &conf, ErrorHandler *errh)
     Vector<int> vf_vlan;
     int max_rss = 0;
     bool has_rss = false;
+    bool isolate = false;
 #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
     String rules_filename;
 #endif
@@ -106,6 +107,7 @@ int FromDPDKDevice::configure(Vector<String> &conf, ErrorHandler *errh)
         .read("RX_INTR", _rx_intr)
         .read("MAX_RSS", max_rss).read_status(has_rss)
         .read("PAUSE", fc_mode)
+        .read("ISOLATE", isolate)
         .complete() < 0)
         return -1;
 
@@ -160,6 +162,8 @@ int FromDPDKDevice::configure(Vector<String> &conf, ErrorHandler *errh)
     }
 
     r = _dev->set_mode(mode, num_pools, vf_vlan, rules_filename, errh);
+
+    _dev->set_init_isolate(isolate);
 #else
     r = _dev->set_mode(mode, num_pools, vf_vlan, errh);
 #endif
