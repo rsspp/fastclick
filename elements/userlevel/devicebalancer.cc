@@ -390,6 +390,14 @@ void BalanceMethodRSS::rebalance(Vector<Pair<int,float>> load) {
     update_reta();
 }
 
+void BalanceMethodRSS::cpu_changed() {
+	int m =  balancer->_used_cpus.size();
+	for (int i = 0; i < _table.size(); i++) {
+		_table[i] = balancer->_used_cpus[i % m].id;
+	}
+	BalanceMethodDevice::cpu_changed();
+}
+
 
 int BalanceMethodRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
 	Element* e = 0;
@@ -431,7 +439,7 @@ int MethodPianoRSS::initialize(ErrorHandler* errh, int startwith) {
     load_tracker_initialize(errh);
 
     if (_counter_is_xdp) {
-	click_chatter("Resizing counte to %d",_reta_size);
+	click_chatter("Resizing count to %d",_reta_size);
 		_count.resize(_reta_size);
 		_xdp_table_fd = ((XDPLoader*)_counter)->get_map_fd("count_map");
 		if (!_xdp_table_fd)
@@ -844,7 +852,8 @@ class BucketMapTargetProblem
 				underloaded.pop();
 			}
 
-			click_chatter("Imbalance at run %d : %f-%f %f-%f, square %f, m %f",run,imbalance_o,imbalance_u,overload_allowed,underload_allowed,square_imbalance, m);
+			if (unlikely(balancer->_verbose))
+				click_chatter("Imbalance at run %d : %f-%f %f-%f, square %f, m %f",run,imbalance_o,imbalance_u,overload_allowed,underload_allowed,square_imbalance, m);
 
 			if (run == max_runs || square_imbalance < target_imbalance) break;
 
@@ -949,7 +958,8 @@ class BucketMapTargetProblem
 				overload_allowed = overload_allowed + dir * (overload_allowed / 2);
 				underload_allowed = underload_allowed + dir * (underload_allowed / 2);*/
 			}
-			click_chatter("Phase %d", phase);
+			if (unlikely(balancer->_verbose > 1))
+				click_chatter("Phase %d", phase);
 			run++;
 			last_sq = square_imbalance;
 			if (run == max_runs) {
@@ -1083,8 +1093,8 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 	    uint64_t values[nr_cpus];
 	    for (uint32_t key = 0; key < _count.size(); key++) {
 	        if (bpf_map_lookup_elem(_xdp_table_fd, &key, values)) {
-			click_chatter("XDP lookup failed");
-			continue;
+				click_chatter("XDP lookup failed");
+				continue;
 	        }
 			uint64_t tot = 0;
 //		    for (int i = 0; i < nr_cpus; i++) {
@@ -2137,7 +2147,7 @@ DeviceBalancer::make_info(int _id) {
 }
 
 
-enum {h_active, h_autoscale};
+enum {h_active, h_autoscale, h_force_cpu};
 
 
 String
@@ -2158,24 +2168,53 @@ int
 DeviceBalancer::write_param(const String &in_s, Element *e, void *vparam,
                      ErrorHandler *errh)
 {
-	DeviceBalancer *td = (DeviceBalancer *)e;
+	DeviceBalancer *db = (DeviceBalancer *)e;
     String s = cp_uncomment(in_s);
     switch ((intptr_t)vparam) {
     case h_active: {
         bool active;
         if (!BoolArg().parse(s, active))
             return errh->error("type mismatch");
-        if (active && !td->_active)
-		    td->_timer.schedule_after_msec(td->_current_tick);
+        if (active && !db->_active)
+		db->_timer.schedule_after_msec(db->_current_tick);
 
-        td->_active = active;
+        db->_active = active;
         break;
     }
     case h_autoscale: {
         bool active;
         if (!BoolArg().parse(s, active))
             return errh->error("type mismatch");
-        td->_autoscale = active;
+        db->_autoscale = active;
+        break;
+    }
+    case h_force_cpu: {
+	int cpus;
+        if (!IntArg().parse(s, cpus))
+            return errh->error("type mismatch");
+        bool moved = false;
+        if (cpus > db->_used_cpus.size())
+		for (int i = 0; i < cpus-db->_used_cpus.size(); i++) {
+			if (db->_available_cpus.size() > 0) {
+				db->addCore();
+				moved = true;
+			}
+		}
+        else if (cpus < db->_used_cpus.size()) {
+		in_s = "UNSUPPORTED";
+		return -1;
+		//for (int i = 0; i < db->_used_cpus.size() - cpus; i++) {
+
+			/*if (db->_used_cpus.size() > 0) {
+				db->removeCore();
+				moved = false;
+			}*/
+		//}
+        }
+        if (moved) {
+		db->_method->cpu_changed();
+        }
+        in_s = cpus-db->_used_cpus.size();
         break;
     }
     }
@@ -2189,6 +2228,7 @@ DeviceBalancer::add_handlers()
     add_read_handler("autoscale", read_param, h_autoscale, Handler::CHECKBOX);
     add_write_handler("active", write_param, h_active);
     add_write_handler("autoscale", write_param, h_autoscale);
+    add_write_handler("cpus", write_param, h_force_cpu);
 }
 
 

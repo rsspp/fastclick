@@ -45,6 +45,9 @@ class BalanceMethod { public:
     virtual int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
     virtual void rebalance(Vector<Pair<int,float>> load) = 0;
     virtual int initialize(ErrorHandler *errh, int startwith);
+    virtual void void cpu_changed() {
+	balancer->_timer.reschedule_now();
+    };
 protected:
 
     DeviceBalancer* balancer;
@@ -85,6 +88,9 @@ class BalanceMethodRSS : public BalanceMethodDevice { public:
     void rebalance(Vector<Pair<int,float>> load) override;
     Vector<unsigned> _table;
 
+    void cpu_changed() override;
+
+
     struct rte_eth_rss_conf _rss_conf;
     Vector<rte_flow*> _flows;
 
@@ -94,6 +100,7 @@ protected:
     bool _update_reta_flow;
     RSSVerifier* _verifier;
     int _reta_size;
+
 };
 
 
