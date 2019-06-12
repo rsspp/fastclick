@@ -7,6 +7,8 @@
 
 CLICK_DECLS
 
+
+
 enum target_method {
     TARGET_LOAD,
     TARGET_BALANCE
@@ -33,6 +35,7 @@ class LoadTracker {
 
 };
 
+class FlowIPManager;
 class DeviceBalancer;
 
 class BalanceMethod { public:
@@ -186,6 +189,7 @@ public:
     Vector<CPUStat> _cpustats;
 
     int _verbose;
+    FlowIPManager* _manager;
 
     struct CpuInfo {
 	int id;

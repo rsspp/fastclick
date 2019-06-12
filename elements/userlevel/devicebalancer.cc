@@ -28,6 +28,7 @@
 #include <nlopt.hpp>
 
 #include "../analysis/rssverifier.hh"
+#include "../flow/flowipmanager.hh"
 
 #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
     #include <click/flowdirector.hh>
@@ -377,7 +378,10 @@ int BalanceMethodRSS::initialize(ErrorHandler *errh, int startwith) {
     }
     if (!_update_reta_flow)  {
 	click_chatter("RETA update method is global");
+    }
 
+    if (balancer->_manager) {
+	balancer->_manager->init_assignment(_table);
     }
     return err;
 }
@@ -1756,6 +1760,7 @@ bool BalanceMethodRSS::update_reta(bool validate) {
 	if (_verifier) {
 		_verifier->_table = _table;
 	}
+
 	if (_update_reta_flow) {
         if (!update_reta_flow(validate))
             return false;
@@ -1849,6 +1854,7 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
     String cycles;
     int startcpu;
     bool havemax;
+    Element* manager = 0;
     if (Args(this, errh).bind(conf)
         .read_mp("METHOD", method)
         .read_mp("DEV", dev)
@@ -1866,6 +1872,7 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
 		.read_or_set("AUTOSCALE", _autoscale, false)
 		.read_or_set("ACTIVE", _active, true)
 		.read_or_set("VERBOSE", _verbose, true)
+		.read("MANAGER", manager)
         .consume() < 0)
         return -1;
 
@@ -1903,6 +1910,10 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
         _method = new MethodRSSRR(this, dev);
     } else {
         return errh->error("Unknown method %s", method.c_str());
+    }
+
+    if (manager) {
+	_manager = dynamic_cast<FlowIPManager*>(manager);
     }
 
     if (target=="load")
