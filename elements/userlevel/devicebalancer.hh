@@ -45,9 +45,8 @@ class BalanceMethod { public:
     virtual int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
     virtual void rebalance(Vector<Pair<int,float>> load) = 0;
     virtual int initialize(ErrorHandler *errh, int startwith);
-    virtual void void cpu_changed() {
-	balancer->_timer.reschedule_now();
-    };
+    virtual void cpu_changed();
+
 protected:
 
     DeviceBalancer* balancer;
@@ -205,16 +204,30 @@ public:
 	int addCore();
 	void removeCore(int phys_id);
 
+	int max_cpus() {
+		return _max_cpus;
+	}
+
     Vector<CpuInfo> _used_cpus;
     Vector<int> _available_cpus;
     double _overloaded_thresh = 0.75;
     double _underloaded_thresh = 0.25;
+
+    struct RunStat {
+        RunStat() : imbalance(0), count(0), time(0) {
+        };
+        double imbalance;
+        int count;
+        uint64_t time;
+    };
+    per_thread<Vector<RunStat>> _stats;
+
 private:
     static int write_param(const String &in_s, Element *e, void *vparam, ErrorHandler *errh) CLICK_COLD;
     static String read_param(Element *e, void *thunk) CLICK_COLD;
 
-
 };
+
 
 CLICK_ENDDECLS
 

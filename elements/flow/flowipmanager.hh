@@ -68,7 +68,8 @@ public:
     void cleanup(CleanupStage stage) CLICK_COLD;
 
     //First : group id, second : destination cpu
-    void migrate(DPDKDevice* dev, int from, Vector<Pair<int,int>> gids);
+    void pre_migrate(DPDKDevice* dev, int from, Vector<Pair<int,int>> gids);
+    void post_migrate(DPDKDevice* dev, int from);
 
 
     void push_batch(int, PacketBatch* batch);
@@ -76,14 +77,14 @@ public:
     void init_assignment(Vector<unsigned> table);
 
 private:
-    inline void flush_queue(int groupid, BatchBuilder &b);
-    inline void process(int groupid, Packet* p, BatchBuilder& b);
+
     struct CoreInfo {
-    	CoreInfo() : watch(0), count(0), lock() {
+	CoreInfo() : watch(0), count(0), lock(), pending(false) {
     	};
     	uint64_t count;
     	uint64_t watch;
     	Spinlock lock;
+	bool pending;
     	Vector<Pair<int,int> > moves; //First : group id, second : destination cpu
     } CLICK_ALIGNED(CLICK_CACHE_LINE_SIZE);
 
@@ -107,6 +108,10 @@ private:
 
     gtable* _tables;
     per_thread<CoreInfo> _cores;
+
+    void do_migrate(CoreInfo &core);
+    inline void flush_queue(int groupid, BatchBuilder &b);
+    inline void process(int groupid, Packet* p, BatchBuilder& b);
 
 };
 
