@@ -387,7 +387,7 @@ int BalanceMethodRSS::initialize(ErrorHandler *errh, int startwith) {
     }
 
     if (balancer->_manager) {
-	balancer->_manager->init_assignment(_table);
+    balancer->_manager->init_assignment(_table);
     }
     return err;
 }
@@ -398,39 +398,39 @@ void BalanceMethodRSS::rebalance(Vector<Pair<int,float>> load) {
 
 void BalanceMethodRSS::cpu_changed() {
     int m =  balancer->_used_cpus.size();
-	Vector<Vector<Pair<int,int>>> omoves(balancer->max_cpus(), Vector<Pair<int,int>>());
-	/*Vector<int> epochs;
-	epochs.resize(max_cpus());*/
+    Vector<Vector<Pair<int,int>>> omoves(balancer->max_cpus(), Vector<Pair<int,int>>());
+    /*Vector<int> epochs;
+    epochs.resize(max_cpus());*/
 
 
     for (int i = 0; i < _table.size(); i++) {
 
-	int newcpu = balancer->_used_cpus[i % m].id;
-	if (balancer->_manager && newcpu!= _table[i]) {
-			omoves[_table[i]].push_back(Pair<int,int>(i, newcpu));
-		}
-	//epochs(_table[i]) =
+    int newcpu = balancer->_used_cpus[i % m].id;
+    if (balancer->_manager && newcpu!= _table[i]) {
+            omoves[_table[i]].push_back(Pair<int,int>(i, newcpu));
+        }
+    //epochs(_table[i]) =
         _table[i] = newcpu;
     }
 
     if (balancer->_manager) {
-		for (int i = 0; i < m; i++) {
-			if (omoves[i].size() > 0) {
-				balancer->_manager->pre_migrate((DPDKDevice*)_fd, i, omoves[i]);
-			}
-		}
-	}
+        for (int i = 0; i < m; i++) {
+            if (omoves[i].size() > 0) {
+                balancer->_manager->pre_migrate((DPDKDevice*)_fd, i, omoves[i]);
+            }
+        }
+    }
     click_chatter("Migration info written. Updating reta.");
     update_reta();
     click_chatter("Post migration");
-	if (balancer->_manager) {
-		for (int i = 0; i < m; i++) {
-			if (omoves[i].size() > 0) {
-				balancer->_manager->post_migrate((DPDKDevice*)_fd, i);
-			}
-		}
-	}
-	click_chatter("Post migration finished");
+    if (balancer->_manager) {
+        for (int i = 0; i < m; i++) {
+            if (omoves[i].size() > 0) {
+                balancer->_manager->post_migrate((DPDKDevice*)_fd, i);
+            }
+        }
+    }
+    click_chatter("Post migration finished");
 }
 
 
@@ -1386,6 +1386,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
         if (_moved[cpuid]) {
             p.imbalance[i] = 0;
             _moved[cpuid] = false;
+            //click_chatter("Cpu %d just moved",i);
             continue;
         }
 
@@ -1394,19 +1395,24 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 
         if (p.imbalance[i] > _threshold) {
             if (unlikely(balancer->_verbose))
-        click_chatter("Underloaded %d is cpu %d, imb %f, buckets %d",p.uid.size(),i, p.imbalance[i],load[i].nbuckets_nz);
+                click_chatter("Underloaded %d is cpu %d, imb %f, buckets %d",p.uid.size(),i, p.imbalance[i],load[i].nbuckets_nz);
             p.uid.push_back(i);
         }
         else if (p.imbalance[i] < - _threshold) {
             if (load[i].nbuckets_nz == 0) {
                 click_chatter("WARNING : A core is overloaded but has no buckets !");
             } else if (load[i].nbuckets_nz > 1) { //Else there is nothing we can do
-        if (unlikely(balancer->_verbose))
-            click_chatter("Overloaded %d is cpu %d, imb %f, buckets %d",p.oid.size(),i, p.imbalance[i],load[i].nbuckets_nz);
+               if (unlikely(balancer->_verbose))
+                    click_chatter("Overloaded %d is cpu %d, imb %f, buckets %d",p.oid.size(),i, p.imbalance[i],load[i].nbuckets_nz);
                 p.oid.push_back(i);
-            } else
-        if (unlikely(balancer->_verbose))
-            click_chatter("Overloaded cpu %d, imb %f, buckets %d",i, p.imbalance[i],load[i].nbuckets_nz);
+            } else {
+                if (unlikely(balancer->_verbose))
+                    click_chatter("Overloaded cpu %d, imb %f, buckets %d",i, p.imbalance[i],load[i].nbuckets_nz);
+            }
+        } else {
+            if (unlikely(balancer->_verbose))
+                click_chatter("Ignored cpu %d, imb %f, buckets %d",i, p.imbalance[i],load[i].nbuckets_nz);
+
         }
     }
 
@@ -1479,7 +1485,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
             p.imbalance[to_cpu] -= pm.buckets_load[i];
 
             if (unlikely(balancer->_verbose))
-                click_chatter("Move bucket %d to core %d",buckets_indexes[i].bucket_id,load[to_cpu].cpu_phys_id);
+                click_chatter("Move bucket %d from core %d to core %d",buckets_indexes[i].bucket_id,_table[buckets_indexes[i].bucket_id], load[to_cpu].cpu_phys_id);
 
             if (balancer->_manager) {
                 omoves[pm.buckets_max_idx[i]].push_back(Pair<int,int>(buckets_indexes[i].bucket_id, load[to_cpu].cpu_phys_id));
@@ -1675,6 +1681,7 @@ reagain:
             auto v = (t-begin).usecval();
             if (unlikely(balancer->_verbose || v > 100))
                 click_chatter("Solution computed in %d usec", v);
+
             update_reta();
             if (balancer->_manager) {
                 for (int i = 0; i < p.oid.size(); i++) {
@@ -1724,7 +1731,8 @@ bool BalanceMethodRSS::update_reta_flow(bool validate) {
              int tot;
              if (_flows.size() == 1)
                  tot = 2;
-             else tot = 1;
+             else
+                 tot = 1;
              for (int i = 0; i < tot; i++) {
                 memset(&attr, 0, sizeof(struct rte_flow_attr));
                 attr.ingress = 1;
@@ -1746,6 +1754,9 @@ int aid = 0;
                     uint16_t queue[_table.size()];
                     for (int i = 0; i < _table.size(); i++) {
                         queue[i] = _table[i];
+                        assert(_table[i] >= 0);
+                        assert(_table[i] < 16);
+                        click_chatter("%d->%d",i,_table[i]);
                     }
                     rss.types = _rss_conf.rss_hf;
                     rss.key_len = _rss_conf.rss_key_len;
@@ -1771,7 +1782,7 @@ int aid = 0;
                pat.spec = 0;
                pat.mask = 0;
                pat.last = 0;
-              pattern.push_back(pat);
+               pattern.push_back(pat);
 
                pat.type = RTE_FLOW_ITEM_TYPE_IPV4;
 
@@ -1782,8 +1793,8 @@ int aid = 0;
                    bzero(mask, sizeof(rte_flow_item_ipv4));
                    spec->hdr.dst_addr = i;
                    mask->hdr.dst_addr = 1;
-               pat.spec = spec;
-              pat.mask = mask;
+                   pat.spec = spec;
+                   pat.mask = mask;
                } else {
                                    pat.spec = 0;
                                    pat.mask = 0;
