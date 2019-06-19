@@ -370,24 +370,23 @@ int BalanceMethodRSS::initialize(ErrorHandler *errh, int startwith) {
 
     _update_reta_flow = true;
     if (_is_dpdk) {
-        if (!update_reta_flow(true)) {
+       if (!update_reta_flow(true)) {
             _update_reta_flow = false;
             if (_fd->set_rss_reta(_fd, _table) != 0)
                 return errh->error("Neither flow RSS or global RSS works to program the RSS table.");
-        } else
-            click_chatter("RETA update method is flow");
+       } else
+           click_chatter("RETA update method is flow");
     } else {
-    _update_reta_flow = false;
-
+        _update_reta_flow = false;
         if (_fd->set_rss_reta(_fd, _table) != 0)
             return errh->error("Cannot program the RSS table.");
     }
     if (!_update_reta_flow)  {
-    click_chatter("RETA update method is global");
+        click_chatter("RETA update method is global");
     }
 
     if (balancer->_manager) {
-    balancer->_manager->init_assignment(_table);
+        balancer->_manager->init_assignment(_table);
     }
     return err;
 }
@@ -752,7 +751,8 @@ class BucketMapTargetProblem
 
     void solve(DeviceBalancer* balancer) {
         click_chatter("Assigning %d buckets to %d targets :", buckets_load.size(), target.size());
-        if (unlikely(balancer->_verbose)) {
+
+        if (unlikely(balancer->_verbose > 1)) {
             for (int i = 0; i < max.size(); i++) {
                 click_chatter("Overloaded %d , %f",i, max[i]);
             }
@@ -833,21 +833,21 @@ class BucketMapTargetProblem
                     cref u = underloaded.top();
                     underloaded.pop();
 
-                    if (unlikely(balancer->_verbose))
+                    if (unlikely(balancer->_verbose > 2))
                         click_chatter("U%d load %f",u.id, u.load);
                     if (bucket.load < u.load + underload_allowed) {
                         u.load -= bucket.load;
                         o.load -= bucket.load;
                         transfer[bucket.id] = u.id;
 
-                        if (unlikely(balancer->_verbose))
+                        if (unlikely(balancer->_verbose > 1))
                             click_chatter("Bucket %d to ucore %d, bucket load %f", bucket.id, u.id, bucket.load);
                         if (u.load > target_imbalance) {
                             underloaded.push(u);
                         } else {
                             imbalance_u += abs(u.load);
                             square_imbalance += u.load * u.load;
-                            if (unlikely(balancer->_verbose))
+                            if (unlikely(balancer->_verbose > 1))
                                     click_chatter("Underloaded core %d is now okay with %f load", u.id, u.load);
                         }
                         goto bucket_assigned;
@@ -856,7 +856,7 @@ class BucketMapTargetProblem
                     }
                 }
 
-                if (unlikely(balancer->_verbose))
+                if (unlikely(balancer->_verbose > 2))
                     click_chatter("Bucket %d UNMOVED, load %f", bucket.id, o.id, bucket.load);
 
                 bucket_assigned:
@@ -871,7 +871,7 @@ class BucketMapTargetProblem
                 } else {
                     imbalance_o += abs(o.load);
                     square_imbalance += o.load * o.load;
-                    if (unlikely(balancer->_verbose))
+                    if (unlikely(balancer->_verbose > 1))
                         click_chatter("Overloaded core %d is now okay with %f load. Empty : %d", o.id, o.load,buckets.empty());
                 }
             }
@@ -889,15 +889,16 @@ class BucketMapTargetProblem
             }
 
 
-            if (unlikely(balancer->_verbose))
-                click_chatter("Imbalance at run %d : %f-%f %f-%f, square %f, m %f",run,imbalance_o,imbalance_u,overload_allowed,underload_allowed,square_imbalance, m);
-
-
             Timestamp run_end = Timestamp::now_steady();
+            unsigned time = (run_end - run_begin).usecval();
+            if (unlikely(balancer->_verbose))
+                click_chatter("Imbalance at run %d : %f-%f %f-%f, square %f, m %f, in %d usec",run,imbalance_o,imbalance_u,overload_allowed,underload_allowed,square_imbalance, m, time);
+
+
             auto &v = (*balancer->_stats)[run - 1];
                 v.imbalance += square_imbalance;
                 v.count ++;
-                v.time += (run_end - run_begin).usecval();
+                v.time += time;
 
 
             if (run == max_runs || square_imbalance < target_imbalance) break;
@@ -1003,7 +1004,7 @@ class BucketMapTargetProblem
                 overload_allowed = overload_allowed + dir * (overload_allowed / 2);
                 underload_allowed = underload_allowed + dir * (underload_allowed / 2);*/
             }
-            if (unlikely(balancer->_verbose > 1))
+            if (unlikely(balancer->_verbose > 2))
                 click_chatter("Phase %d", phase);
 
             run++;
@@ -1176,7 +1177,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     float _threshold_force_overload = 0.90;
     float _load_alpha = 1;
     //float _high_load_threshold = 0.;
-    const float _imbalance_threshold = 0.01;
+    const float _imbalance_threshold = _threshold / 2;
     assert(_imbalance_threshold <= (_threshold / 2) + EPSILON); //Or we'll always miss
     //Vector<float> corrections;
     //corrections.resize(click_max_cpu_ids(), 0);
@@ -1337,7 +1338,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
      * Dancers
      * We move the bucket that have more load than XXX 50% to other cores
      */
-     if (has_high_load) {
+     if (has_high_load && _dancer) {
         if (unlikely(balancer->_verbose))
             click_chatter("Has high load !");
         for (int j = 0; j < _table.size(); j++) {
@@ -1477,8 +1478,8 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
             int to_uid = pm.transfer[i];
             if (to_uid == -1) continue;
 
-            if (unlikely(balancer->_verbose))
-            click_chatter("B idx %d to ucpu %d",i,to_uid);
+            if (unlikely(balancer->_verbose > 2))
+                click_chatter("B idx %d to ucpu %d",i,to_uid);
             int to_cpu = p.uid[to_uid];
             int from_cpu = p.oid[pm.buckets_max_idx[i]];
             p.imbalance[from_cpu] += pm.buckets_load[i];
@@ -1756,7 +1757,7 @@ int aid = 0;
                         queue[i] = _table[i];
                         assert(_table[i] >= 0);
                         assert(_table[i] < 16);
-                        click_chatter("%d->%d",i,_table[i]);
+                        //click_chatter("%d->%d",i,_table[i]);
                     }
                     rss.types = _rss_conf.rss_hf;
                     rss.key_len = _rss_conf.rss_key_len;
@@ -1870,6 +1871,7 @@ int MethodPianoRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
             .read("RSSCOUNTER", e)
             .read_or_set("IMBALANCE_ALPHA", i, 1)
             .read_or_set("IMBALANCE_THRESHOLD", threshold, 0.02) //Do not scale core underloaded or overloaded by this threshold
+            .read_or_set("DANCER", _dancer, false)
             .consume() < 0)
         return -1;
     _target_load = t;

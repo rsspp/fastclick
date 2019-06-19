@@ -138,6 +138,8 @@ private:
     float _target_load;
     float _imbalance_alpha;
     float _threshold;
+
+    bool _dancer;
 };
 
 /*
