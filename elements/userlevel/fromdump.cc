@@ -569,12 +569,14 @@ inline bool
 FromDump::check_timing(Packet *p, Timestamp& now_s, bool& fresh)
 {
 again:
-    int elapsed_real = (now_s - _last_real).usecval();
+
+    now_s = Timestamp::now_steady();
+    int64_t elapsed_real = (now_s - _last_real).usecval();
 
     int64_t elapsed_virt = (p->timestamp_anno() - _timing_offset).usecval();
 
     if (_current_accel != 100) {
-        elapsed_virt = elapsed_virt * 100 / _current_accel;
+        elapsed_virt = ((double)elapsed_virt * 100.0f) / (double)_current_accel;
     }
 
     if (elapsed_real < elapsed_virt) {
@@ -583,12 +585,12 @@ again:
             fresh = true;
             goto again;
         }
-        if (elapsed_real > INT_MAX / 101) {
+        /*ACCUMULATION NOT NEEDED
+         * if (elapsed_real > (INT_MAX / 101)) {
             _last_real = now_s;
-            _timing_offset = _timing_offset + Timestamp::make_usec(elapsed_virt);
-            elapsed_virt -= elapsed_real;
-            elapsed_real = 0;
-        }
+            _timing_offset = _timing_offset + Timestamp::make_usec((uint64_t)elapsed_real * (uint64_t)_current_accel / 100));
+            goto again;
+        }*/
         elapsed_virt -= Timer::adjustment().usecval();
 
         if (elapsed_real < elapsed_virt) {
@@ -597,7 +599,7 @@ again:
             _notifier.sleep();
         } else {
             if (output_is_push(0))
-            _task.fast_reschedule();
+                _task.fast_reschedule();
         }
 
 	    return false;
