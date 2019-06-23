@@ -87,7 +87,7 @@ const char *DPDKDevice::get_device_driver()
 
 
 
-#define RETA_CONF_SIZE     (ETH_RSS_RETA_SIZE_512 / RTE_RETA_GROUP_SIZE)
+#define RETA_CONF_SIZE     (2048 / RTE_RETA_GROUP_SIZE)
 
 int DPDKDevice::dpdk_set_rss_max(int max)
 {
@@ -117,7 +117,7 @@ int DPDKDevice::dpdk_set_rss_max(int max)
 
 int DPDKDevice::dpdk_set_rss_reta(const Vector<unsigned> &reta)
 {
-	struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
+	struct rte_eth_rss_reta_entry64 reta_conf[reta.size() / RTE_RETA_GROUP_SIZE];
     struct rte_eth_dev_info dev_info;
 
 	uint32_t i;

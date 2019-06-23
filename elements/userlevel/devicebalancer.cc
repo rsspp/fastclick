@@ -320,7 +320,7 @@ BalanceMethodRSS::BalanceMethodRSS(DeviceBalancer* b, Element* fd) : BalanceMeth
 
 int BalanceMethodRSS::initialize(ErrorHandler *errh, int startwith) {
     int reta = _fd->get_rss_reta_size(_fd);
-    click_chatter("Reta size %d", reta);
+    click_chatter("Actual reta size %d, target %d", reta, _reta_size);
     if (reta <= 0)
         return errh->error("Device not initialized or RSS is misconfigured");
     if (_fd->get_rss_reta)
@@ -361,7 +361,7 @@ int BalanceMethodRSS::initialize(ErrorHandler *errh, int startwith) {
         _table[i] = i % startwith;
     }
 
-    click_chatter("RSS initialized with %d CPUs", startwith);
+    click_chatter("RSS initialized with %d CPUs and %d buckets", startwith, _table.size());
     int err = BalanceMethodDevice::initialize(errh, startwith);
     if (err != 0)
         return err;
