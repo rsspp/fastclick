@@ -15,21 +15,19 @@
 #include <click/config.h>
 #include <click/args.hh>
 #include <click/error.hh>
-#include <click/dpdkdevice.hh>
 #include <click/multithread.hh>
 #include <click/straccum.hh>
+
+#include <click/numa.hh>
 #include <rte_flow.h>
 #include "devicebalancer.hh"
+#ifdef HAVE_BPF
 #include "xdploader.hh"
-#include <queue>
-#include <vector>
-#include <limits.h>
-#include <float.h>
-//#include <glpk.h>             /* GNU GLPK linear/mixed integer solver */
-#include <nlopt.hpp>
-
+#endif
+#include <click/solver.hh>
 #include "../analysis/rssverifier.hh"
 #include "../flow/flowipmanager.hh"
+
 
 #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
     #include <click/flowdirector.hh>
@@ -472,644 +470,20 @@ int MethodPianoRSS::initialize(ErrorHandler* errh, int startwith) {
         return -1;
     load_tracker_initialize(errh);
 
+#ifdef HAVE_BPF
     if (_counter_is_xdp) {
-    click_chatter("Resizing count to %d",_reta_size);
+        click_chatter("Resizing count to %d",_reta_size);
         _count.resize(_reta_size);
         _xdp_table_fd = ((XDPLoader*)_counter)->get_map_fd("count_map");
         if (!_xdp_table_fd)
             return errh->error("Could not find map !");
     }
+#endif
     return 0;
 }
 #define EPSILON 0.0001f
 
 
-
-class Problem
-{ public:
-    Vector<int> oid;
-    Vector<int> uid;
-    Vector<int> transfer;
-    float min_cost;
-    Vector<float> imbalance;
-    float target;
-    int N;
-
-    Problem() : oid(), uid(), min_cost(FLT_MAX) {
-
-    }
-
-    bool computeSol() {
-        float newload[N] = {0.0f};
-        for (int c = 0; c < N; c++) { //Sum of imbalance for all cores
-            newload[transfer[c]] += imbalance[c];
-        }
-        float imb = 0;
-        for (int c = 0; c < N; c++) {
-            imb += newload[c] * newload[c];
-        }
-        if (imb < min_cost) {
-            min_cost = imb;
-            return true;
-        }
-        return false;
-    }
-
-    bool solve() {
-        tryK(0);
-    }
-
-    /**
-     * Problem of this method:
-     * If all sending cores have quite big buckets, then correction may lead to all
-     * cores having too low corrected transfer so no bucket will move. Moving some
-     * of them would probably be best.
-     *
-     * One solution is to consider all buckets that fit the correction, then select a subset
-     * that min the invariance of the moving set.
-     *
-     * But that's again a bad minimization
-     *
-     * So if no buckets were moved, we do a second pass without the correction
-     */
-    Vector<float> fixedTransfert() {
-        //See above
-        float newload[N] = {0.0f};
-        for (int c = 0; c < N; c++) { //Sum of imbalance for all cores
-            newload[transfer[c]] += imbalance[c];
-        }
-        Vector<float> fT;
-        fT.resize(N,1.0);
-
-        //Eg c0 had  0.15 of imbalance //underloaded, newload -0.03
-        //   c1 had -0.10 of imbalance //overloaded, newload 0
-        //   c2 has -0.08 of imbalance  //overloaded, newload 0
-
-        // c1 and c2 will give all to c0, but c0 will become overloaded by -0.03.
-        //Let's share the final imbalance to -0.03/3, so every of those are at -0.01
-                        //
-        for (int c = 0; c < N; c++) { //C is the receiving core, ie, for each receiving core C
-            if (newload[c] < 0) {
-
-                int nsources = 0;
-                float imb = 0; //Imbalance of all senders
-
-                for (int j = 0; j < N; j++) {
-                    if (j == c)
-                        continue;
-                    if (transfer[j] == c) {
-                        nsources++;
-                        imb += imbalance[j]; // += -0.10 += -0.08  -> -0.18
-                    }
-                }
-                if (nsources == 0)
-                    continue;
-                float avgimb = (imbalance[c] + imb) / (nsources + 1); //Average imbalance Eg 0.15 - 0.18 / 3 = -0.03 / 3 = -0.01
-
-
-
-                //If we just give the factor to all sources, then some would be left with more imbalance than others
-                // We want all the sources to have exactly the same amount of final imbalance ->
-                //   avgimb
-                if (avgimb < -0.001) {
-                    for (int j = 0; j < N; j++) {
-                        if (j == c)
-                            continue;
-                        if (transfer[j] == c) {
-
-                            // c1 :: -0.01 / -0.10 -> 0.1 -> 0.9
-                            // c2 :: -0.01 / -0.08 -> 0.125 -> 0.875
-                            fT[j] = 1 - avgimb / imbalance[j];
-                        }
-                    }
-                }
-
-                //Final example : j gives 0.875*-0.2 == -0.175 --> n = -0.025
-                //c reveives -0.175 + 0.15 = -0.025
-
-            }
-        }
-        return fT;
-
-    }
-
-private:
-    bool tryK(int i)
-    {
-        if (i == oid.size()) {
-            return computeSol();
-        }
-        int best = -1;
-        for (int j = 0; j < uid.size(); j++) {
-                transfer[oid[i]] = uid[j];
-                if (tryK(i + 1)) {
-                    best = j;
-                }
-        }
-        if (best > -1) {
-            transfer[oid[i]] = uid[best];
-
-            return true;
-        }
-        return false;
-    }
-};
-
-class BucketMapProblem
-{ public:
-    Vector<int> transfer; //existing core id for each buckets
-    Vector<float> imbalance; //Imbalance for each existing cores (no holes)
-    Vector<float> buckets_load; //Load for each bucket
-
-
-    BucketMapProblem(int nbuckets, int ncpu) : min_cost(FLT_MAX) {
-        transfer.resize(nbuckets);
-        buckets_load.resize(nbuckets);
-        imbalance.resize(ncpu);
-    }
-
-    /*This is WAY too long
-    bool tryK(int i)
-    {
-
-        if (i == buckets_load.size()) { //All buckets have been mapped
-            float newload[imbalance.size()] = {0.0f};
-            for (int c = 0; c < buckets_load.size(); c++) { //Sum of imbalance for all cores
-                newload[transfer[c]] += buckets_load[c];
-            }
-            float imb = 0;
-            for (int c = 0; c < imbalance.size(); c++) {
-                float coreload = imbalance[c] + newload[c];
-                imb += (coreload) * (coreload);
-            }
-            if (imb < min_cost) {
-                min_cost = imb;
-                return true;
-            }
-            return false;
-        }
-        int best = -1;
-        for (int j = 0; j < imbalance.size(); j++) {
-//                click_chatter("Level %d:%d",i,j);
-                transfer[i] = j;
-                if (tryK(i + 1)) {
-                    best = j;
-                }
-        }
-        if (best > -1) {
-            transfer[i] = best;
-
-            return true;
-        }
-        return false;
-    }
-
-    void solve() {
-        return tryK(0);
-    }
-    */
-
-    void solve() {
-        typedef struct {
-            int id;
-            float load;
-        } bref;
-        auto cmp = [](bref left, bref right) { return left.load > right.load; };
-        std::priority_queue<bref, std::vector<bref>, decltype(cmp)> q(cmp);
-        for(int i = 0; i < buckets_load.size(); i++) {
-            float f = buckets_load[i];
-
-            q.push(bref{.id = i,.load =   f});
-        }
-
-        auto cmpc = [](bref left, bref right) { return left.load < right.load; };
-        std::priority_queue<bref, std::vector<bref>, decltype(cmp)> cores(cmp);
-        for(int i = 0; i < imbalance.size(); i++) {
-            float f = imbalance[i];
-            //click_chatter("Core %d should receive %f load",i,f);
-            cores.push(bref{.id = i,.load = - f});//negative of imbalance, so we should reach a nice 0 everywhere by adding some load
-        }
-
-
-        while (!q.empty()) {
-            bref t = q.top();
-            q.pop();
-            bref c = cores.top();
-            cores.pop();
-            transfer[t.id] = c.id;
-            c.load += t.load;
-            cores.push(c);
-        }
-
-    }
-
-private:
-    float min_cost;
-};
-
-double myvfunc(const std::vector<double> &x, std::vector<double> &grad, void *my_func_data)
-{
-    if (!grad.empty()) {
-        grad[0] = 0.0;
-        grad[1] = 0.5 / sqrt(x[1]);
-    }
-    return sqrt(x[1]);
-}
-
-struct cref {
-    float load;
-    int id;
-};
-class Compare
-{
-public:
-    bool operator() (cref a, cref b)
-    {
-        return a.load < b.load;
-    }
-};
-
-/**
- * Take some buckets of a list to make the load of a set of CPU reach target
- */
-class BucketMapTargetProblem
-{ public:
-    Vector<int> transfer; //existing core id for each buckets
-    Vector<float> target; //Target for destination
-    Vector<float> max; //Max load to take from overloaded
-    Vector<int> buckets_max_idx; //Load for each bucket
-    Vector<float> buckets_load; //Load for each bucket
-
-
-    BucketMapTargetProblem(int nbuckets, int nunderloaded, int noverloaded ) : min_cost(FLT_MAX) {
-        transfer.resize(nbuckets,-1);
-        buckets_load.resize(nbuckets);
-        buckets_max_idx.resize(nbuckets);
-        target.resize(nunderloaded);
-        max.resize(noverloaded);
-    }
-
-    void solve(DeviceBalancer* balancer) {
-        click_chatter("Assigning %d buckets to %d targets :", buckets_load.size(), target.size());
-
-        if (unlikely(balancer->_verbose > 1)) {
-            for (int i = 0; i < max.size(); i++) {
-                click_chatter("Overloaded %d , %f",i, max[i]);
-            }
-            for (int i = 0; i < target.size(); i++) {
-                click_chatter("Underloaded %d , %f",i, target[i]);
-            }
-            for (int i = 0; i < buckets_load.size(); i++) {
-                click_chatter("Bucket %d , %f, oid %d",i, buckets_load[i], buckets_max_idx[i]);
-            }
-        }
-
-        float target_imbalance = 0.01;//(o_load - u_loadà ;
-        //Build priority for each overloaded
-        //
-
-        auto cmplt = [](cref left, cref right) { return left.load > right.load; };
-        auto cmpgt = [](cref left, cref right) { return left.load < right.load; };
-
-        float overload_allowed =  -0.01; //Take just not enough load of overloaded
-        float underload_allowed = -0.01; //Give just not enough to underloaded
-        float imbalance_u = 0;
-        float imbalance_o = 0;
-        float oa_min;
-        float ua_min;
-        float bottom_oa = overload_allowed;
-        float top_oa;
-        float bottom_ua = underload_allowed;
-        float top_ua;
-        float square_imbalance = 0;
-        float last_sq = FLT_MAX;
-        float min_sq = FLT_MAX;
-        float bottom_sq = FLT_MAX;
-        float top_sq = FLT_MAX;
-        int run = 1;
-        float m = -1;
-        int phase;
-#define max_runs 10
-
-        while(true) {
-
-            Timestamp run_begin = Timestamp::now_steady();
-            imbalance_u = 0;
-            imbalance_o = 0;
-            square_imbalance = 0;
-            typedef std::priority_queue<cref, std::vector<cref>, Compare> bstack;
-            std::vector<bstack> bstacks;
-            bstacks.resize(max.size(),bstack());
-            for (int i = 0; i < buckets_load.size(); i++) {
-                bstacks[buckets_max_idx[i]].push(cref{buckets_load[i],i});
-                transfer[i] = -1;
-            }
-
-            std::priority_queue<cref, std::vector<cref>, decltype(cmpgt)> overloaded(cmpgt);
-            for (int i = 0; i < max.size(); i++) {
-                overloaded.push(cref{max[i],i});
-            }
-
-            std::priority_queue<cref, std::vector<cref>, decltype(cmpgt)> underloaded(cmpgt);
-            for (int i = 0; i < target.size(); i++) {
-                underloaded.push(cref{target[i],i});
-            }
-
-
-            while (!overloaded.empty() && !underloaded.empty()) {
-                next_core:
-                //Select most overloaded core
-                cref o = overloaded.top();
-                overloaded.pop(); //Will be added bacj
-
-                //Select biggest bucket
-                bstack& buckets = bstacks[o.id];
-                cref bucket = buckets.top();
-                buckets.pop();//Bucket is removed forever
-
-                //Assign its most used buckets
-                std::vector<cref> save;
-                while (!underloaded.empty()) {
-                    cref u = underloaded.top();
-                    underloaded.pop();
-
-                    if (unlikely(balancer->_verbose > 2))
-                        click_chatter("U%d load %f",u.id, u.load);
-                    if (bucket.load < u.load + underload_allowed) {
-                        u.load -= bucket.load;
-                        o.load -= bucket.load;
-                        transfer[bucket.id] = u.id;
-
-                        if (unlikely(balancer->_verbose > 1))
-                            click_chatter("Bucket %d to ucore %d, bucket load %f", bucket.id, u.id, bucket.load);
-                        if (u.load > target_imbalance) {
-                            underloaded.push(u);
-                        } else {
-                            imbalance_u += abs(u.load);
-                            square_imbalance += u.load * u.load;
-                            if (unlikely(balancer->_verbose > 1))
-                                    click_chatter("Underloaded core %d is now okay with %f load", u.id, u.load);
-                        }
-                        goto bucket_assigned;
-                    } else {
-                        save.push_back(u);
-                    }
-                }
-
-                if (unlikely(balancer->_verbose > 2))
-                    click_chatter("Bucket %d UNMOVED, load %f", bucket.id, o.id, bucket.load);
-
-                bucket_assigned:
-                while (!save.empty()) {
-                    underloaded.push(save.back());
-                    save.pop_back();
-                }
-
-                if (o.load > - overload_allowed
-                        && !buckets.empty()) {
-                    overloaded.push(o);
-                } else {
-                    imbalance_o += abs(o.load);
-                    square_imbalance += o.load * o.load;
-                    if (unlikely(balancer->_verbose > 1))
-                        click_chatter("Overloaded core %d is now okay with %f load. Empty : %d", o.id, o.load,buckets.empty());
-                }
-            }
-            while (!overloaded.empty()) {
-                auto o = overloaded.top();
-                imbalance_o += abs(o.load);
-                square_imbalance += o.load * o.load;
-                overloaded.pop();
-            }
-            while (!underloaded.empty()) {
-                auto u = underloaded.top();
-                imbalance_u += abs(u.load);
-                square_imbalance += u.load * u.load;
-                underloaded.pop();
-            }
-
-
-            Timestamp run_end = Timestamp::now_steady();
-            unsigned time = (run_end - run_begin).usecval();
-            if (unlikely(balancer->_verbose))
-                click_chatter("Imbalance at run %d : %f-%f %f-%f, square %f, m %f, in %d usec",run,imbalance_o,imbalance_u,overload_allowed,underload_allowed,square_imbalance, m, time);
-
-
-            auto &v = (*balancer->_stats)[run - 1];
-                v.imbalance += square_imbalance;
-                v.count ++;
-                v.time += time;
-
-
-            if (run == max_runs || square_imbalance < target_imbalance) break;
-
-            if (run == 1) {
-                overload_allowed = imbalance_o;
-                underload_allowed = imbalance_u;
-                //bottom_square_imbalance = square_imbalance;
-                //min_sq = square_imbalance; //min is the sq for the min allowed, not the min seen sq
-                phase = 1; //searching top
-            } else {
-
-                if (square_imbalance < min_sq) {
-                    oa_min = overload_allowed;
-                    ua_min = underload_allowed;
-                }
-
-                if (phase == 1) {
-                    if (square_imbalance <= last_sq) { //Continue finding top
-                        overload_allowed = overload_allowed + overload_allowed / 2;
-                        underload_allowed = underload_allowed + underload_allowed / 2;
-                    } else {
-                        phase = 2;
-                        top_oa = overload_allowed;
-                        top_ua = underload_allowed;
-                        m = 0.5;
-                        overload_allowed = overload_allowed / 2;
-                        underload_allowed = underload_allowed / 2;
-                    }
-                } else if (phase == 2) { //Searching left inflation
-                    if (square_imbalance <= last_sq) {
-                        m = (0 + m) / 2; //continue left;
-                        if (m < 0.01)
-                            break; //Border is the max
-                        overload_allowed = bottom_oa + (top_oa - bottom_oa) * m;
-                        underload_allowed = bottom_ua + (top_ua - bottom_ua) * m;
-                        //Either we still need to descend left
-                        //Or we hit the left inflation and will need to descend right afterwards
-                    } else if (square_imbalance > last_sq) { //we found a new bottom
-                        bottom_oa = overload_allowed;
-                        bottom_ua = underload_allowed;
-                        bottom_sq = square_imbalance;
-                        phase = 3;
-                        m = 0.5;
-                        overload_allowed = (bottom_oa + top_oa) / 2;
-                        underload_allowed = (bottom_ua + top_ua) / 2;
-                    }
-                } else if (phase == 3) { //Searching right inflation
-                    if (square_imbalance <= last_sq) {
-                        m = (1 + m) / 2; // continue right
-                        if (m > 0.99)
-                                break; //Border is the min
-                        overload_allowed = bottom_oa + (top_oa - bottom_oa) * m;
-                        underload_allowed = bottom_ua + (top_ua - bottom_ua) * m;
-                    } else     if (square_imbalance > last_sq) { //we found a new top
-                        phase = 2;
-                        top_oa = overload_allowed;
-                        top_ua = underload_allowed;
-                        top_sq = square_imbalance;
-                        m = 0.5;
-                        overload_allowed = bottom_oa + (top_oa - bottom_oa) * m;
-                        underload_allowed = bottom_ua + (top_ua - bottom_ua) * m;
-                    }
-                }
-
-                if (top_sq == bottom_sq && bottom_sq == square_imbalance && square_imbalance == min_sq) {
-                    break;
-                }
-
-
-                /*
-                if (square_imbalance <= last_sq) { // Continue in this direction
-
-                } else {
-                    //invert_direction, set max according to dir
-                    if (dir > 0) {
-                        top_oa = overload_allowed;
-                        top_ua = underload_allowed;
-                        dir = -1;
-                        overload_allowed = (bottom_oa + overload_allowed) / 2;
-                        underload_allowed = (bottom_ua + underload_allowed) / 2;
-                    } else {
-                        bottom_oa = overload_allowed;
-                        bottom_ua = underload_allowed;
-                        dir = 1;
-                        overload_allowed = (top_oa + overload_allowed) / 2;
-                        underload_allowed = (top_ua + underload_allowed) / 2;
-                        bottom_square_imbalance = square_imbalance;
-                    }
-                    if (bottom_square_imbalance)
-                }*/
-                /*if (square_imbalance == last_sq)
-                    break;*/
-
-
-                /*if (square_imbalance > last_sq) {
-                    dir = -dir;
-                    n_change++;
-                    if (nchange > 2)
-                } else if (square_imbalance < last_sq) {
-                    n_change = 0;
-                }
-                overload_allowed = overload_allowed + dir * (overload_allowed / 2);
-                underload_allowed = underload_allowed + dir * (underload_allowed / 2);*/
-            }
-            if (unlikely(balancer->_verbose > 2))
-                click_chatter("Phase %d", phase);
-
-            run++;
-            last_sq = square_imbalance;
-            if (run == max_runs) {
-                if (square_imbalance != min_sq) {
-                    overload_allowed = oa_min;
-                    underload_allowed = ua_min;
-                } else
-                    break;
-            }
-
-        }
-
-
-/*
- * Not sure about the gradient
-        nlopt::opt opt(nlopt::LD_MMA, 2);
-        std::vector<double> lb(2);
-        lb[0] = -HUGE_VAL; lb[1] = 0;
-        opt.set_lower_bounds(lb);
-        opt.set_min_objective(myfunc, NULL);
-        my_constraint_data data[2] = { {2,0}, {-1,1} };
-        opt.add_inequality_constraint(myconstraint, &data[0], 1e-8);
-        opt.add_inequality_constraint(myconstraint, &data[1], 1e-8);
-        opt.set_xtol_rel(1e-4);
-        std::vector<double> x(2);
-        x[0] = 1.234; x[1] = 5.678;
-        double minf;
-
-        try{
-            nlopt::result result = opt.optimize(x, minf);
-            std::cout << "found minimum at f(" << x[0] << "," << x[1] << ") = "
-                << std::setprecision(10) << minf << std::endl;
-        }
-        catch(std::exception &e) {
-            std::cout << "nlopt failed: " << e.what() << std::endl;
-        }*/
-        /*
-        lsint weights[] = {10, 60, 30, 40, 30, 20, 20, 2};
-        lsint values[] = {1, 10, 15, 40, 60, 90, 100, 15};
-        lsint knapsackBound = 102;
-
-        // Declares the optimization model.
-        LocalSolver localsolver;
-        LSModel model = localsolver.getModel();
-
-        // 0-1 decisions
-        LSExpression x[8];
-        for (int i = 0; i < 8; i++)
-            x[i] = model.boolVar();
-
-        // knapsackWeight <- 10*x0 + 60*x1 + 30*x2 + 40*x3 + 30*x4 + 20*x5 + 20*x6 + 2*x7;
-        LSExpression knapsackWeight = model.sum();
-        for (int i = 0; i < 8; i++)
-            knapsackWeight += weights[i]*x[i];
-
-        // knapsackWeight <= knapsackBound;
-        model.constraint(knapsackWeight <= knapsackBound);
-
-        // knapsackValue <- 1*x0 + 10*x1 + 15*x2 + 40*x3 + 60*x4 + 90*x5 + 100*x6 + 15*x7;
-        LSExpression knapsackValue = model.sum();
-        for (int i = 0; i < 8; i++)
-            knapsackValue += values[i]*x[i];
-
-        // maximize knapsackValue;
-        model.maximize(knapsackValue);
-
-        // close model, then solve
-        model.close();
-
-        // Parameterizes the solver.
-        localsolver.getParam().setTimeLimit(1);
-        localsolver.solve();*/
-
-    /*    glp_prob *lp;
-        lp = glp_create_prob();
-        glp_set_prob_name(mip, "sample");
-        //int x[target.size()]
-        int* x = transfer.data();
-        glp_set_obj_dir(lp, GLP_MIN);
-
-        //glp_add_rows(lp,buckets_load.size());
-
-        glp_add_cols(lp,buckets_load.size());
-        for (int i = 0; i < buckets_load.size(); i++) {
-            //glp_set_col_name(mip, 1, "x1");
-            // glp_set_col_bnds(mip, 1, GLP_DB, 0.0, 40.0);
-             // glp_set_obj_coef(mip, 1, 1.0);
-              //glp_set_col_name(lp, 1, "b1");
-              glp_set_col_bnds(lp, i, GLP_DB, 0.0, 1.0);
-              glp_set_obj_coef(lp, i, buckets_load.size());
-              glp_set_col_kind(lp, i, GLP_IV);
-        }
-
-        glp_iocp parm;
-          glp_init_iocp(&parm);
-          parm.presolve = GLP_ON;
-          int err = glp_intopt(mip, &parm);*/
-
-    }
-
-private:
-    float min_cost;
-};
 
 
 
@@ -1132,7 +506,7 @@ class Load { public:
 
 void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     click_jiffies_t now = click_jiffies();
-
+#ifdef HAVE_BPF
     if (_counter_is_xdp) {
     click_chatter("Reading XDP table");
     int cpus = balancer->_max_cpus;
@@ -1160,6 +534,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
                 click_chatter("Key %d core %d val %d, var %f",key,_table[key], tot,(float)min(tot,var) / (float)max(tot,var));
         }
     }
+#endif
 //    return;
 
 #define get_node_count(i) ((_counter_is_xdp)?_count.unchecked_at(i).count:((AggregateCounterVector*)_counter)->find_node_nocheck(i).count)
@@ -1182,26 +557,49 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     //Vector<float> corrections;
     //corrections.resize(click_max_cpu_ids(), 0);
 
+    struct MachineLoad {
+	MachineLoad() : N(0), total_load(0), target(0) {
+
+	}
+	int N;
+	float total_load;
+	float target;
+    };
+    struct SocketLoad : MachineLoad {
+	SocketLoad() : imbalance(),uid(),oid() {
+
+	}
+
+	Vector<float> imbalance;
+	Vector<int> uid;
+	Vector<int> oid;
+    };
     float suppload = 0;
-    Problem p;
-    float totalload = 0;
+    //Problem p;
     int min_core = -1;
     float min_core_load = 1;
     float max_core_load = 0;
     bool has_high_load = false;
     Vector<Load> load(rload.size(),Load());
     Vector<unsigned> map_phys_to_id(click_max_cpu_ids(), -1);
+    Vector<SocketLoad> sockets_load;
+    bool do_numa = _numa;
+    int numamax = do_numa?_numa_num:1;
+    sockets_load.resize(numamax);
+
+    MachineLoad machine_load;
+
     for (int j = 0; j < rload.size(); j++) {
         int cpuid = rload[j].first;
         float load_current = rload[j].second;
         //assert(load_current <= 1);
         if (load_current < min_core_load)
-        min_core = j;
+            min_core = j;
         load[j].cpu_phys_id = cpuid;
         if (_past_load[cpuid] == 0)
-        load[j].load = load_current;
+            load[j].load = load_current;
         else
-        load[j].load = load_current * _load_alpha + _past_load[cpuid] * (1.0-_load_alpha);
+            load[j].load = load_current * _load_alpha + _past_load[cpuid] * (1.0-_load_alpha);
         _past_load[cpuid] = load[j].load;
         float diff = _target_load - load[j].load; // >0 if underloaded diff->quantity to add
         suppload += diff;
@@ -1212,27 +610,44 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
             load[j].high = true;
         }
         if (load[j].load > max_core_load) {
-        max_core_load = load[j].load;
+            max_core_load = load[j].load;
         }
         map_phys_to_id[load[j].cpu_phys_id] = j;
 
         //corrections[cpuid] = diff;
         //suppload += diff;
-        totalload+=load[j].load;
+        machine_load.total_load += load[j].load;
+
+
+        if (do_numa) {
+		int numaid =  Numa::get_numa_node_of_cpu(load[j].cpu_phys_id);
+			sockets_load[numaid].N++;
+			sockets_load[numaid].total_load += load[j].load;
+        }
     }
 
-    p.N = load.size();
-    p.target = totalload / (float)p.N;
+    machine_load.N = load.size();
+    machine_load.target = machine_load.total_load / (float)machine_load.N;
 
-    //suppload = (p.N *_target_load) - totalload; //Total power that we have in excess
+    for (int i = 0; i < sockets_load.size(); i++) {
+	sockets_load[i].target = sockets_load[i].total_load / (float)sockets_load[i].N;
+	if (do_numa && abs(sockets_load[i].target -  machine_load.target) > _threshold * 2) {
+		click_chatter("Non-numa forced");
+		do_numa=false;
+	}
+    }
 
-    float var_protect = (p.N + 1) * (max(0.05f,(max_core_load-_target_load)));
+
+    //imbalance.resize(machine_load.N);
+
+    //suppload = (machine_load.N *_target_load) - totalload; //Total power that we have in excess
+
+    float var_protect = (machine_load.N + 1) * (max(0.05f,(max_core_load-_target_load)));
     if (unlikely(balancer->_verbose))
-        click_chatter("Target %f. Total load %f. %d cores. Suppload %f, Var %f", p.target, totalload, p.N, suppload, var_protect);
+        click_chatter("Target %f. Total load %f. %d cores. Suppload %f, Var %f", machine_load.target, machine_load.total_load, machine_load.N, suppload, var_protect);
 
-    p.imbalance.resize(p.N);
 
-    //Count the number of packets for this core
+    //Count the number of packets for each core
     for (int j = 0; j < _table.size(); j++) {
         unsigned long long c = get_node_count(j);
         load[map_phys_to_id[_table[j]]].npackets += c;
@@ -1241,13 +656,14 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
             load[map_phys_to_id[_table[j]]].nbuckets_nz += 1;
     }
 
+
     /**
      * Scaling. If we need more cores, we just add it and the imbalance mapping will do the rest
      * If we remove a core, we minimize the selection of buckets of the removed core -> existing cores to
      * diminish the imbalance already
      */
     if (balancer->_autoscale) {
-        if (suppload > (1 + (1 - _target_load) + var_protect)  && p.N > 1) { // we can remove a core
+        if (suppload > (1 + (1 - _target_load) + var_protect)  && machine_load.N > 1) { // we can remove a core
             if (unlikely(balancer->_verbose)) {
                 click_chatter("Removing a core (target %f)",_target_load);
             }
@@ -1282,16 +698,16 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
             }
 
             //Add imbalance of all cores
-            p.imbalance.resize(p.N-1);
-            p.N = p.N-1;
-            p.target = totalload / (float)p.N;
+            Vector<float> imbalance(machine_load.N-1,0);
+            machine_load.N = machine_load.N-1;
+            machine_load.target = machine_load.total_load / (float)machine_load.N;
 
             //Fix imbalance without the removed core
-            for (int i = 0; i < p.N; i++) {
+            for (int i = 0; i < machine_load.N; i++) {
                 //Imbalance is positive if the core should loose some load
-                p.imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (p.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].second) / 2.0f);
+		imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (machine_load.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].second) / 2.0f);
             }
-            cp.imbalance = p.imbalance;
+            //cimbalance = imbalance;
 
             click_chatter("Solving problem...");
             //Solve problem ; map all buckets of removed core to other cores
@@ -1320,23 +736,42 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
                 if (unlikely(balancer->_verbose))
                     click_chatter("Not enough cores...");
             } else {
-                p.imbalance.resize(p.imbalance.size() + 1);
-                p.N = p.N+1;
-                p.target = totalload / (float)p.N;
+		//imbalance.resize(imbalance.size() + 1);
+		machine_load.N = machine_load.N+1;
+		machine_load.target = machine_load.total_load / (float)machine_load.N;
                 int aid = load.size();
                 load.push_back(Load(a_phys_id));
                 map_phys_to_id[a_phys_id] = aid;
+                if (do_numa) {
+			//We disable numa in any case, to allow inter-numa shuffling
+			//int numaid =  Numa::get_numa_node_of_cpu(a_phys_id);
+				//sockets_load[numaid].N++;
+				//sockets_load[numaid].target = sockets_load[numaid].total_load / (float)sockets_load[numaid].N;;
+				////sockets_load[numaid].imbalance.resize(sockets_load[numaid].imbalance.size() + 1);
+				do_numa = false;
+                }
             }
         }
     } else {
-        if (p.target <  _min_load && !_threshold_force_overload) {
+        if (machine_load.target <  _min_load && !_threshold_force_overload) {
             click_chatter("Underloaded, skipping balancing");
     }
     }
 
+    //We need to fix the first numa socket if numa awareness has been disabled
+    if (_numa && !do_numa) {
+	sockets_load.resize(1);
+	sockets_load[0].N = machine_load.N;
+	sockets_load[0].target = machine_load.target;
+	sockets_load[0].total_load = machine_load.total_load;
+	numamax = 1;
+    }
+
+
     /*
      * Dancers
      * We move the bucket that have more load than XXX 50% to other cores
+     * Not shown in paper. Kept for later. Study of doing this VS splitting TC
      */
      if (has_high_load && _dancer) {
         if (unlikely(balancer->_verbose))
@@ -1380,39 +815,59 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     }
 
     float total_imbalance = 0;
+    //Vector<int> machine_oid;
+    //Vector<int> machine_uid;
 
+    //Prepare per-numa socket data structures
+    for (int i = 0; i < numamax; i++) {
+        SocketLoad &socket = sockets_load[i];
+        Vector<float> &imbalance = socket.imbalance;
+        imbalance.resize(socket.N);
+    }
+
+    int noverloaded = 0;
+    int nunderloaded = 0;
     //Compute the imbalance
-    for (unsigned i = 0; i < p.N; i++) {
+    for (unsigned i = 0; i < machine_load.N; i++) {
         int cpuid = load[i].cpu_phys_id;
+        int numa = 0;
+        if (do_numa) {
+            numa = Numa::get_numa_node_of_cpu(cpuid);
+        }
+        SocketLoad &socket = sockets_load[numa];
+        Vector<float> &imbalance = socket.imbalance;
+
         if (_moved[cpuid]) {
-            p.imbalance[i] = 0;
+		imbalance[i] = 0;
             _moved[cpuid] = false;
             //click_chatter("Cpu %d just moved",i);
             continue;
         }
 
-        p.imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (p.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].load) / 2.0f);i
-        total_imbalance += abs(p.imbalance[i]);
+        imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (socket.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].load) / 2.0f);i
+        total_imbalance += abs(imbalance[i]);
 
-        if (p.imbalance[i] > _threshold) {
+        if (imbalance[i] > _threshold) {
             if (unlikely(balancer->_verbose))
-                click_chatter("Underloaded %d is cpu %d, imb %f, buckets %d",p.uid.size(),i, p.imbalance[i],load[i].nbuckets_nz);
-            p.uid.push_back(i);
+                click_chatter("Underloaded %d is cpu %d, imb %f, buckets %d",socket.uid.size(),i, imbalance[i],load[i].nbuckets_nz);
+            socket.uid.push_back(i);
+            nunderloaded++;
         }
-        else if (p.imbalance[i] < - _threshold) {
+        else if (imbalance[i] < - _threshold) {
             if (load[i].nbuckets_nz == 0) {
                 click_chatter("WARNING : A core is overloaded but has no buckets !");
             } else if (load[i].nbuckets_nz > 1) { //Else there is nothing we can do
                if (unlikely(balancer->_verbose))
-                    click_chatter("Overloaded %d is cpu %d, imb %f, buckets %d",p.oid.size(),i, p.imbalance[i],load[i].nbuckets_nz);
-                p.oid.push_back(i);
+                    click_chatter("Overloaded %d is cpu %d, imb %f, buckets %d",socket.oid.size(),i, imbalance[i],load[i].nbuckets_nz);
+                socket.oid.push_back(i);
+                noverloaded++;
             } else {
                 if (unlikely(balancer->_verbose))
-                    click_chatter("Overloaded cpu %d, imb %f, buckets %d",i, p.imbalance[i],load[i].nbuckets_nz);
+                    click_chatter("Overloaded cpu %d, imb %f, buckets %d",i, imbalance[i],load[i].nbuckets_nz);
             }
         } else {
             if (unlikely(balancer->_verbose))
-                click_chatter("Ignored cpu %d, imb %f, buckets %d",i, p.imbalance[i],load[i].nbuckets_nz);
+                click_chatter("Ignored cpu %d, imb %f, buckets %d",i, imbalance[i],load[i].nbuckets_nz);
 
         }
     }
@@ -1423,96 +878,126 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
      * Re-balancing
      * We minimize the overall imbalance by moving some buckets from overloaded cores to underloaded cores
      */
-    if (p.oid.size() > 0 && p.uid.size() > 0) {
+
 
 #ifndef BALANCE_TWO_PASS
 
-        //Count the number of packets for this core
-        /*
-         * We rebalance all buckets of overloaded to the set of underloaded
-         */
-        unsigned long long all_overloaded_count = 0;
-        for (int u = 0; u < p.oid.size(); u++) {
-            all_overloaded_count += load[p.oid[u]].npackets;
-        }
-        struct Bucket{
-            int oid_id;
-            int bucket_id;
-            int cpu_id;
-        };
-        Vector<Bucket> buckets_indexes;
-        for (int j = 0; j < _table.size(); j++) {
-            if (get_node_count(j) == 0) continue;
-            for (int u = 0; u < p.oid.size(); u++) {
-                if (map_phys_to_id[_table[j]] == p.oid[u]) {
-                    buckets_indexes.push_back(Bucket{.oid_id =u,.bucket_id =j, .cpu_id = p.oid[u]});
-                    break;
-                }
-            }
-        }
+	Vector<Vector<Pair<int,int>>> omoves(noverloaded, Vector<Pair<int,int>>());
 
-        BucketMapTargetProblem pm(buckets_indexes.size(), p.uid.size(), p.oid.size());
+	for (int nid = 0; nid < numamax; nid++) {
+		SocketLoad &socket = sockets_load[nid];
+		Vector<float> &imbalance = socket.imbalance;
 
-        //Compute load for each buckets
-        for (int i = 0; i < buckets_indexes.size(); i++) {
-            Bucket& b = buckets_indexes[i];
-            int j = b.bucket_id;
-            double c = get_node_count(j);
-            pm.buckets_load[i] = (((double) c / (double)load[buckets_indexes[i].cpu_id].npackets)*load[b.cpu_id].load);
-            pm.buckets_max_idx[i] = buckets_indexes[i].oid_id;
-            //click_chatter("Bucket %d (%d) load %f", i ,j, cp.buckets_load[i]);
-        }
+		if (!(socket.oid.size() > 0 && socket.uid.size() > 0))
+			continue;
+			//Count the number of packets for this core
+			/*
+			 * We rebalance all buckets of overloaded to the set of underloaded
+			 */
+			unsigned long long all_overloaded_count = 0;
+			for (int u = 0; u < socket.oid.size(); u++) {
+				all_overloaded_count += load[socket.oid[u]].npackets;
+			}
 
-        for (int i = 0; i < p.uid.size(); i++) {
-            pm.target[i] = p.imbalance[p.uid[i]];
-        }
+			struct Bucket{
+				int oid_id;
+				int bucket_id;
+				int cpu_id;
+			};
 
-        for (int i = 0; i < p.oid.size(); i++) {
-            pm.max[i] = -p.imbalance[p.oid[i]];
-        }
+		Vector<Bucket> buckets_indexes;
+		Vector<int> oid;
+		for (int i = 0; i < socket.oid.size(); i++) {
+			if (!do_numa || Numa::get_numa_node_of_cpu(socket.oid[i]) == nid) {
+				oid.push_back(socket.oid[i]);
+			}
+		}
+		Vector<int> uid;
+		for (int i = 0; i < socket.uid.size(); i++) {
+			if (!do_numa || Numa::get_numa_node_of_cpu(socket.uid[i]) == nid) {
+				uid.push_back(socket.uid[i]);
+			}
+		}
+		for (int j = 0; j < _table.size(); j++) {
+			if (get_node_count(j) == 0) continue;
+			for (int u = 0; u < oid.size(); u++) {
+				if (map_phys_to_id[_table[j]] == oid[u]) {
+					int numa = 0;
+					if (do_numa) {
+						numa = Numa::get_numa_node_of_cpu(_table[j]);
+					}
+					buckets_indexes.push_back(Bucket{.oid_id =u,.bucket_id =j, .cpu_id = oid[u]});
+					break;
+				}
+			}
+		}
 
-        pm.solve(balancer);
+		if (buckets_indexes.size() == 0)
+			continue;
+		BucketMapTargetProblem pm(buckets_indexes.size(), uid.size(), oid.size());
 
-        Vector<Vector<Pair<int,int>>> omoves(p.oid.size(), Vector<Pair<int,int>>());
-        for (int i = 0; i < pm.buckets_load.size(); i++) {
-            int to_uid = pm.transfer[i];
-            if (to_uid == -1) continue;
+		//Compute load for each buckets
+		for (int i = 0; i < buckets_indexes.size(); i++) {
+			Bucket& b = buckets_indexes[i];
+			int j = b.bucket_id;
+			double c = get_node_count(j);
+			pm.buckets_load[i] = (((double) c / (double)load[b.cpu_id].npackets)*load[b.cpu_id].load);
+			pm.buckets_max_idx[i] = b.oid_id;
+			//click_chatter("Bucket %d (%d) load %f", i ,j, b);
+		}
 
-            if (unlikely(balancer->_verbose > 2))
-                click_chatter("B idx %d to ucpu %d",i,to_uid);
-            int to_cpu = p.uid[to_uid];
-            int from_cpu = p.oid[pm.buckets_max_idx[i]];
-            p.imbalance[from_cpu] += pm.buckets_load[i];
-            p.imbalance[to_cpu] -= pm.buckets_load[i];
+		for (int i = 0; i < uid.size(); i++) {
+			pm.target[i] = imbalance[uid[i]];
+		}
 
-            if (unlikely(balancer->_verbose))
-                click_chatter("Move bucket %d from core %d to core %d",buckets_indexes[i].bucket_id,_table[buckets_indexes[i].bucket_id], load[to_cpu].cpu_phys_id);
+		for (int i = 0; i < oid.size(); i++) {
+			pm.max[i] = -imbalance[oid[i]];
+		}
 
-            if (balancer->_manager) {
-                omoves[pm.buckets_max_idx[i]].push_back(Pair<int,int>(buckets_indexes[i].bucket_id, load[to_cpu].cpu_phys_id));
-            }
-            _table[buckets_indexes[i].bucket_id] = load[to_cpu].cpu_phys_id;
+		pm.solve(balancer);
 
-            _moved[load[to_cpu].cpu_phys_id] = true;
-            moved = true;
-        }
-        if (balancer->_manager) {
-            for (int i = 0; i < p.oid.size(); i++) {
-                if (omoves[i].size() > 0) {
-                    balancer->_manager->pre_migrate((DPDKDevice*)_fd,load[p.oid[i]].cpu_phys_id,omoves[i]);
-                }
-            }
-        }
+		for (int i = 0; i < pm.buckets_load.size(); i++) {
+			Bucket& b = buckets_indexes[i];
+			int to_uid = pm.transfer[i];
+			if (to_uid == -1) continue;
+
+			if (unlikely(balancer->_verbose > 2))
+				click_chatter("B idx %d to ucpu %d",i,to_uid);
+			int to_cpu = uid[to_uid];
+			int from_cpu = oid[pm.buckets_max_idx[i]];
+			imbalance[from_cpu] += pm.buckets_load[i];
+			imbalance[to_cpu] -= pm.buckets_load[i];
+
+			if (unlikely(balancer->_verbose))
+				click_chatter("Move bucket %d from core %d to core %d",b.bucket_id,_table[b.bucket_id], load[to_cpu].cpu_phys_id);
+
+			if (balancer->_manager) {
+				omoves[pm.buckets_max_idx[i]].push_back(Pair<int,int>(b.bucket_id, load[to_cpu].cpu_phys_id));
+			}
+			_table[b.bucket_id] = load[to_cpu].cpu_phys_id;
+
+			_moved[load[to_cpu].cpu_phys_id] = true;
+			moved = true;
+		}
+		if (balancer->_manager) {
+			for (int i = 0; i < oid.size(); i++) {
+				if (omoves[i].size() > 0) {
+					int from_phys_id = load[oid[i]].cpu_phys_id;
+					balancer->_manager->pre_migrate((DPDKDevice*)_fd,from_phys_id,omoves[i]);
+				}
+			}
+		}
+	}
 
 #else
-
+        if (!(socket.oid.size() > 0 && socket.uid.size() > 0))
         //Set problem parameters
-        float min_cost = p.N * p.N;
-        p.transfer.resize(p.N);
-        for (unsigned i = 0; i < p.N; i++) {
+        float min_cost = socket.N * socket.N;
+        p.transfer.resize(socket.N);
+        for (unsigned i = 0; i < socket.N; i++) {
             p.transfer[i] = i;//Default is to transfer load to itself
         }
-        p.min_cost = p.N;
+        p.min_cost = socket.N;
 
         //Solve assignment of imbalance of overloaded -> underloaded
         p.solve();
@@ -1524,15 +1009,15 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 
 
         if (unlikely(balancer->_verbose))
-            click_chatter("Transfer solution for %d uid, %d oid:",p.uid.size(), p.oid.size());
+            click_chatter("Transfer solution for %d uid, %d oid:",socket.uid.size(), socket.oid.size());
 
         //We start at a random core index, as the first cores to be balanced may be advantaged
         int iRand = click_random();
 
-        for (unsigned iOffset = 0; iOffset < p.N; iOffset++) {
-            unsigned i = (iRand + iOffset) % p.N;
+        for (unsigned iOffset = 0; iOffset < socket.N; iOffset++) {
+            unsigned i = (iRand + iOffset) % socket.N;
             if (unlikely(balancer->_verbose))
-                click_chatter("Core %d (load %f, imbalance %f (corr %f)) -> %d (load %f)", i, load[i].load, p.imbalance[i], fT[i], p.transfer[i], load[p.transfer[i]].load);
+                click_chatter("Core %d (load %f, imbalance %f (corr %f)) -> %d (load %f)", i, load[i].load, imbalance[i], fT[i], p.transfer[i], load[p.transfer[i]].load);
             if ((unsigned)p.transfer[i] == i)
                 continue;
 
@@ -1616,17 +1101,17 @@ reagain:
                 //click_chatter("ctm %f bpc %f, load %f",core_tot_min,bpc,load[i].load);
                 assert( bpc != NAN);
                 double bload =  bpc * load[i].load; //How much CPU load this bucket represents
-                if (bload > -p.imbalance[i] * fT[i] || bload > 0.5 ) { //Never over balance! Also dancers are handled separately
+                if (bload > -imbalance[i] * fT[i] || bload > 0.5 ) { //Never over balance! Also dancers are handled separately
                     //if (bload > _threshold)
                     if (!miss) {
                         //if (unlikely(balancer->_verbose))
-                        //click_chatter("Trying to fill %f of imbalance", p.imbalance[i]*fT[i]);
+                        //click_chatter("Trying to fill %f of imbalance", imbalance[i]*fT[i]);
                         miss =true;
                     }
                     if (unlikely(balancer->_verbose > 1)) {
-                        click_chatter("Skipping bucket %d var %f, load %f%% (min %f%% of bucket, %f%% real), imbalance %f, corrected imbalance %f, at least %d flows",j, var, bload*100, bpc*100, ((c * 100.0)/core_tot),p.imbalance[i], p.imbalance[i]*fT[i],-1);//get_node(j).flows);
+                        click_chatter("Skipping bucket %d var %f, load %f%% (min %f%% of bucket, %f%% real), imbalance %f, corrected imbalance %f, at least %d flows",j, var, bload*100, bpc*100, ((c * 100.0)/core_tot),imbalance[i], imbalance[i]*fT[i],-1);//get_node(j).flows);
                     }
-                    if (bload < -p.imbalance[i] && bload < 0.5)
+                    if (bload < -imbalance[i] && bload < 0.5)
                         nSkipped ++;
                         /*
                         left_max += bload * (1 + var);
@@ -1636,19 +1121,19 @@ reagain:
                     continue;
                 } else
                     miss = false;
-                if (p.imbalance[i]*fT[i] > -_imbalance_threshold)
+                if (imbalance[i]*fT[i] > -_imbalance_threshold)
                     break;
 
 
                 tot_bload += bload;
                 tot_bpc += bpc;
-                //click_chatter("Bucket %d var %f, load %f, imbalance %f",j, var, bload,p.imbalance[i]);
+                //click_chatter("Bucket %d var %f, load %f, imbalance %f",j, var, bload,imbalance[i]);
 
                 moved = true;
                 _table[j] = load[p.transfer[i]].cpu_phys_id;
 
-                p.imbalance[i] += bload;
-                //p.imbalance[p.transfer[i]] -= bload;
+                imbalance[i] += bload;
+                //imbalance[p.transfer[i]] -= bload;
                 n++;
                 /*if (n == cn) {
                     click_chatter("All buckets moved... This should not happen");
@@ -1667,37 +1152,47 @@ reagain:
         } //For each cores
 
 #endif
-        total_imbalance = 0;
-        for (unsigned i = 0; i < p.N; i++) {
-            total_imbalance += abs(p.imbalance[i]);
-            if (abs(p.imbalance[i]) > _threshold * 2 ) {
-                if (unlikely(balancer->_verbose))
-                    click_chatter("Imbalance of core %d left to %f, that's quite a MISS.", i, p.imbalance[i]);
-            }
-        }
+	total_imbalance = 0;
 
 
-        if (moved) {
-            Timestamp t = Timestamp::now_steady();
-            auto v = (t-begin).usecval();
-            if (unlikely(balancer->_verbose || v > 100))
-                click_chatter("Solution computed in %d usec", v);
 
-            update_reta();
-            if (balancer->_manager) {
-                for (int i = 0; i < p.oid.size(); i++) {
-                    if (omoves[i].size() > 0) {
-                        balancer->_manager->post_migrate((DPDKDevice*)_fd,load[p.oid[i]].cpu_phys_id);
-                    }
-                }
-            }
-        }
-    }
+	if (moved) {
+		for (int nid = 0; nid < numamax; nid++) {
+			SocketLoad &socket = sockets_load[nid];
+			for (unsigned i = 0; i < socket.N; i++) {
+				total_imbalance += abs(socket.imbalance[i]);
+				if (abs(socket.imbalance[i]) > _threshold * 2 ) {
+					if (unlikely(balancer->_verbose))
+						click_chatter("Imbalance of core %d left to %f, that's quite a MISS.", i, socket.imbalance[i]);
+				}
+			}
+		}
+
+		Timestamp t = Timestamp::now_steady();
+		auto v = (t-begin).usecval();
+		if (unlikely(balancer->_verbose || v > 100))
+			click_chatter("Solution computed in %d usec", v);
+
+		update_reta();
+		if (balancer->_manager) {
+			for (int nid = 0; nid < numamax; nid++) {
+				SocketLoad &socket = sockets_load[nid];
+				for (int i = 0; i < socket.oid.size(); i++) {
+					if (omoves[i].size() > 0) {
+						int from_phys_id =  load[socket.oid[i]].cpu_phys_id;
+						balancer->_manager->post_migrate((DPDKDevice*)_fd,from_phys_id);
+					}
+				}
+			}
+		}
+	}
+
 
     if (!_counter_is_xdp)
         ((AggregateCounterVector*)_counter)->advance_epoch();
     else {
-    click_chatter("Reseting XDP table");
+#ifdef HAVE_BPF
+        click_chatter("Reseting XDP table");
         int cpus = balancer->_max_cpus;
         unsigned int nr_cpus = bpf_num_possible_cpus();
         uint64_t values[nr_cpus] = {0};
@@ -1707,6 +1202,7 @@ reagain:
                 continue;
             }
         }
+#endif
     }
 
     //Change the speed of ticks if necessary
@@ -1872,11 +1368,16 @@ int MethodPianoRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
             .read_or_set("IMBALANCE_ALPHA", i, 1)
             .read_or_set("IMBALANCE_THRESHOLD", threshold, 0.02) //Do not scale core underloaded or overloaded by this threshold
             .read_or_set("DANCER", _dancer, false)
+            .read_or_set("NUMA", _numa, true)
             .consume() < 0)
         return -1;
     _target_load = t;
     _imbalance_alpha = i;
     _threshold = threshold;
+    if (_numa)
+        _numa_num = Numa::get_max_numas();
+    else
+        _numa_num = 1;
 
     int err = BalanceMethodRSS::configure(conf, errh);
     if (err != 0)
@@ -1886,7 +1387,9 @@ int MethodPianoRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
     if (e) {
         _counter = (AggregateCounterVector*)e->cast("AggregateCounterVector");
         if (!_counter) {
+#ifdef HAVE_BPF
             _counter = (XDPLoader*)e->cast("XDPLoader");
+#endif
             if (!_counter) {
                 return errh->error("Counter must be of the type AggregateCounterVector or XDPLoader");
             }

@@ -4,6 +4,7 @@
 #include <click/hashtable.hh>
 #include <click/string.hh>
 #include <click/vector.hh>
+
 extern "C" {
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
@@ -118,5 +119,4 @@ XDPLoader::read_per_cpu_array_count(int map_fd, int cpus, Vector<T>& table) {
 #endif
 
 CLICK_ENDDECLS
-
 #endif

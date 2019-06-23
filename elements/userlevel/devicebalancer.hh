@@ -3,6 +3,7 @@
 
 #include <click/batchelement.hh>
 #include <click/ethernetdevice.hh>
+#include <click/dpdkdevice.hh>
 #include "../analysis/aggcountervector.hh"
 
 CLICK_DECLS
@@ -140,6 +141,8 @@ private:
     float _threshold;
 
     bool _dancer;
+    bool _numa;
+    int _numa_num;
 };
 
 /*

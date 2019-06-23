@@ -4,12 +4,14 @@
 #include <click/ethernetdevice.hh>
 #include "elements/userlevel/kernelfilter.hh"
 
+#if HAVE_LIBBPF
 # define PCAP_DONT_INCLUDE_PCAP_BPF_H 1
 #include <bpf/bpf.h>
 struct bpf_program {
     u_int bf_len;
     struct bpf_insn *bf_insns;
 };
+#endif
 
 
 
