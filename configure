@@ -6819,7 +6819,6 @@ else
 fi
 
 
-
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing bpf_prog_load_xattr" >&5
 $as_echo_n "checking for library containing bpf_prog_load_xattr... " >&6; }
 if ${ac_cv_search_bpf_prog_load_xattr+:} false; then :
@@ -6893,7 +6892,7 @@ fi
 done
 
 if test "x$ac_have_libbpf$ac_have_libbpf_h" = "xyesyes"; then
-    $as_echo "#define HAVE_LIBBPF 1" >>confdefs.h
+    $as_echo "#define HAVE_BPF 1" >>confdefs.h
 
     have_libbpf=yes
 else
@@ -7287,8 +7286,9 @@ if test "x$enable_dpdk" = "xyes"; then
 
 
     if pkg-config --exists libdpdk ; then
-        :
-    else
+        { $as_echo "$as_me:${as_lineno-$LINENO}: Metron is not yet compatible with pkgconfig-based DPDK installation. $RTE_SDK will be used." >&5
+$as_echo "$as_me: Metron is not yet compatible with pkgconfig-based DPDK installation. $RTE_SDK will be used." >&6;}
+    fi
       if test ! -f "$RTE_SDK_BIN/include/rte_eal.h"; then
         as_fn_error $? "
 =========================================
@@ -7322,7 +7322,6 @@ or install DPDK using meson, or he system package manager.
 
       DPDK_INCLUDES=-I${RTE_SDK_BIN}/include/
 
-    fi
 
     $as_echo "#define HAVE_DPDK 1" >>confdefs.h
 
@@ -9536,6 +9535,44 @@ $as_echo "#define HAVE_BOUND_PORT_TRANSFER 1" >>confdefs.h
   CXXFLAGS="$CXXFLAGS -Wno-pmf-conversions"
 fi
 
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C++ compiler accepts -faligned-new" >&5
+$as_echo_n "checking whether C++ compiler accepts -faligned-new... " >&6; }
+if ${ax_cv_check_cxxflags___faligned_new+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CXXFLAGS
+  CXXFLAGS="$CXXFLAGS  -faligned-new"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_compile "$LINENO"; then :
+  ax_cv_check_cxxflags___faligned_new=yes
+else
+  ax_cv_check_cxxflags___faligned_new=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CXXFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cxxflags___faligned_new" >&5
+$as_echo "$ax_cv_check_cxxflags___faligned_new" >&6; }
+if test "x$ax_cv_check_cxxflags___faligned_new" = xyes; then :
+  have_aligned_new=yes
+else
+  have_aligned_new=no
+fi
+
+if test "x$have_aligned_new" = xyes; then
+    CXXFLAGS="$CXXFLAGS -faligned-new"
+fi
 
 
 # Check whether --enable-tools was given.

@@ -195,11 +195,10 @@ fi
 
 AC_SEARCH_LIBS([elf_version], [elf], [ac_have_elf=yes], [ac_have_elf=no])
 
-
 AC_SEARCH_LIBS([bpf_prog_load_xattr], [bpf], [ac_have_libbpf=yes], [ac_have_libbpf=no])
 AC_CHECK_HEADERS([bpf/bpf.h], [ac_have_libbpf_h=yes], [ac_have_libbpf_h=no])
 if test "x$ac_have_libbpf$ac_have_libbpf_h" = "xyesyes"; then
-    AC_DEFINE([HAVE_LIBBPF])
+    AC_DEFINE([HAVE_BPF])
     have_libbpf=yes
 else
     have_libbpf=no
@@ -302,8 +301,8 @@ if test "x$enable_dpdk" = "xyes"; then
 
 
     if pkg-config --exists libdpdk ; then
-        :
-    else
+        AC_MSG_NOTICE([Metron is not yet compatible with pkgconfig-based DPDK installation. $RTE_SDK will be used.])
+    fi
       if test ! -f "$RTE_SDK_BIN/include/rte_eal.h"; then
         AC_MSG_ERROR([
 =========================================
@@ -332,7 +331,6 @@ or install DPDK using meson, or he system package manager.
       AC_SUBST(RTE_VER_YEAR, $rte_ver_year)
       AC_SUBST(RTE_VER_MONTH, $rte_ver_month)
       AC_SUBST(DPDK_INCLUDES, -I${RTE_SDK_BIN}/include/)
-    fi
 
     AC_DEFINE([HAVE_DPDK])
     AC_SUBST(USE_DPDK, yes)
@@ -872,6 +870,10 @@ if test "$enable_bound_port_transfer" = yes; then
   CXXFLAGS="$CXXFLAGS -Wno-pmf-conversions"
 fi
 
+AX_CHECK_COMPILE_FLAG([-faligned-new], [have_aligned_new=yes], [have_aligned_new=no])
+if test "x$have_aligned_new" = xyes; then
+    CXXFLAGS="$CXXFLAGS -faligned-new"
+fi
 
 dnl
 dnl check whether tools should be built for host or build

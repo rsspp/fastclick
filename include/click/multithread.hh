@@ -9,6 +9,7 @@
 #include <click/machine.hh>
 #include <click/sync.hh>
 
+
 #if CLICK_LINUXMODULE
 # error This file is not meant for Kernel mode
 #endif
