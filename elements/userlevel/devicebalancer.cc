@@ -1252,7 +1252,6 @@ int aid = 0;
                     for (int i = 0; i < _table.size(); i++) {
                         queue[i] = _table[i];
                         assert(_table[i] >= 0);
-                        assert(_table[i] < 16);
                         //click_chatter("%d->%d",i,_table[i]);
                     }
                     rss.types = _rss_conf.rss_hf;
