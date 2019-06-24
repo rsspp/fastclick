@@ -912,7 +912,6 @@ class WritablePacket : public Packet { public:
     inline void rewrite_ips_ports(IPPair pair, uint16_t sport, uint16_t dport, bool is_tcp = true);
     inline void rewrite_ipport(IPAddress ip, uint16_t port, const int shift, bool is_tcp = true);
     inline void rewrite_ip(IPAddress ip, const int shift, bool is_tcp = true);
-    inline void rewrite_seq(tcp_seq_t seq, const int shift);
 
 #if !CLICK_LINUXMODULE
     inline void set_buffer(unsigned char *data, uint32_t buffer_length, uint32_t data_length);
@@ -2888,6 +2887,9 @@ WritablePacket::set_buffer(unsigned char *data, uint32_t buffer_length, uint32_t
 }
 #endif
 
+#include <clicknet/tcp.h>
+#include <clicknet/udp.h>
+
 inline void
 WritablePacket::rewrite_ips(IPPair pair, bool is_tcp) {
     assert(this->network_header());
@@ -3002,24 +3004,6 @@ WritablePacket::rewrite_ip(IPAddress ip, const int shift, bool is_tcp) {
         click_update_in_cksum(&this->tcp_header()->th_sum, t_old_hw, t_new_hw);
     else
         click_update_in_cksum(&this->udp_header()->uh_sum, t_old_hw, t_new_hw);
-}
-
-//0 for seq, 1 for ack
-inline void
-WritablePacket::rewrite_seq(tcp_seq_t seq, const int shift) {
-    assert(this->network_header());
-    assert(this->transport_header());
-    uint32_t old_hw, t_old_hw = 0;
-    uint32_t new_hw, t_new_hw = 0;
-
-    uint16_t *xseq = reinterpret_cast<uint16_t *>(&this->tcp_header()->th_seq);
-    t_old_hw = (uint32_t) xseq[shift * 2];
-    t_old_hw += (t_old_hw >> 16);
-    memcpy(&xseq[shift*2], &seq, 4);
-    t_new_hw = (uint32_t) xseq[shift * 2];
-    t_new_hw += (t_new_hw >> 16);
-
-    click_update_in_cksum(&this->tcp_header()->th_sum, t_old_hw, t_new_hw);
 }
 
 typedef Packet::PacketType PacketType;
