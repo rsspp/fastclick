@@ -4,7 +4,7 @@
 #include <click/ethernetdevice.hh>
 #include "elements/userlevel/kernelfilter.hh"
 
-#if HAVE_LIBBPF
+#if HAVE_BPF
 # define PCAP_DONT_INCLUDE_PCAP_BPF_H 1
 #include <bpf/bpf.h>
 struct bpf_program {
