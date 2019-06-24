@@ -27,6 +27,7 @@ FlowIPNAT::configure(Vector<String> &conf, ErrorHandler *errh)
                .read_mp("SIP",_sip)
                .read("ACCEPT_NONSYN", _accept_nonsyn)
                .read("STATE", _own_state)
+			   .read("FCB_OFFSET",_flow_data_offset)
                .complete() < 0)
         return -1;
 
@@ -40,7 +41,7 @@ int FlowIPNAT::initialize(ErrorHandler *errh) {
      * NATReverse takes care of telling that it will touch our hashtable
      * therefore touching is actually the passing threads for both directions
      */
-    Bitvector touching = get_passing_threads(true);
+    Bitvector touching = get_passing_threads();//TODO touching true
 
     /**
      * If only one thread touch this element, disable MT-safeness.
@@ -52,7 +53,7 @@ int FlowIPNAT::initialize(ErrorHandler *errh) {
     /**
      * Get passing threads, that is the threads that will call push_batch
      */
-    Bitvector passing = get_passing_threads(false);
+    Bitvector passing = get_passing_threads(); //TODO touching false
     if (passing.weight() == 0) {
         return errh->warning("No thread passing by, element will not work if it's not indeed idle");
     }
@@ -194,6 +195,7 @@ FlowIPNATReverse::configure(Vector<String> &conf, ErrorHandler *errh)
     Element* e;
     if (Args(conf, this, errh)
                 .read_mp("NAT",e)
+				.read("FCB_OFFSET",_flow_data_offset)
                 .complete() < 0)
         return -1;
     _in = reinterpret_cast<FlowIPNAT*>(e);
@@ -266,7 +268,7 @@ void FlowIPNATReverse::push_batch(int port, NATEntryOUT* flowdata, PacketBatch* 
 }
 
 CLICK_ENDDECLS
-ELEMENT_REQUIRES(flow false)
+
 EXPORT_ELEMENT(FlowIPNATReverse)
 ELEMENT_MT_SAFE(FlowIPNATReverse)
 EXPORT_ELEMENT(FlowIPNAT)

@@ -54,7 +54,6 @@ DPDKDevice::DPDKDevice() : port_id(-1), info(), EthernetDevice() {
 	get_rss_reta = &dpdk_eth_get_rss_reta;
 	get_rss_reta_size = &dpdk_eth_get_rss_reta_size;
     assert(get_rss_reta_size);
-    click_chatter("DEV ok!");
 }
 
 DPDKDevice::DPDKDevice(portid_t port_id) : DPDKDevice() {

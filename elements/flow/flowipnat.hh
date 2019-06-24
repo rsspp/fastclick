@@ -7,6 +7,7 @@
 #include <click/vector.hh>
 #include <click/deque.hh>
 #include <click/tcpelement.hh>
+#include <click/ring.hh>
 #include <click/flow/flowelement.hh>
 CLICK_DECLS
 
@@ -39,7 +40,6 @@ CLICK_DECLS
 
 CLICK_DECLS
 
-#if HAVE_NAT_NEVER_REUSE
 struct NATCommon {
 	NATCommon(uint16_t _port, MPSCDynamicRing<NATCommon*>* _ring) : port(_port), closing(0), ring(_ring) {
         ref = 0;
@@ -49,7 +49,6 @@ struct NATCommon {
     uint8_t closing; //Has one side started to close?
     MPSCDynamicRing<NATCommon*>* ring;
 };
-#endif
 
 class NATState { public:
     NATState(NATCommon* _ref) : fin_seen(false), ref(_ref) {
