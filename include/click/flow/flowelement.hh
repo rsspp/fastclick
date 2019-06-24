@@ -300,6 +300,24 @@ private:
     }
 
 };
+
+/**
+ * FlowSpaceElement
+ */
+
+template<class Derived, typename T>
+FlowStateElement<Derived, T>::FlowStateElement() : VirtualFlowSpaceElement() {
+}
+
+
+template<class Derived, typename T>
+int FlowStateElement<Derived, T>::initialize(ErrorHandler *errh) {
+    if (_flow_data_offset == -1) {
+        return errh->error("No FlowClassifier() element sets the flow context for %s !",name().c_str());
+    }
+    return 0;
+}
+
 #endif
 
 CLICK_ENDDECLS
