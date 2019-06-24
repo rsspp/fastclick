@@ -329,6 +329,10 @@ public :
         return prev();
     }
 
+    inline Packet* first() {
+        return this;
+    }
+
     inline void append_batch(PacketBatch* head) {
         tail()->set_next(head);
         set_tail(head->tail());
