@@ -558,22 +558,23 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     //corrections.resize(click_max_cpu_ids(), 0);
 
     struct MachineLoad {
-	MachineLoad() : N(0), total_load(0), target(0) {
+        MachineLoad() : N(0), total_load(0), target(0) {
 
-	}
-	int N;
-	float total_load;
-	float target;
+        }
+        int N;
+        float total_load;
+        float target;
     };
     struct SocketLoad : MachineLoad {
-	SocketLoad() : imbalance(),uid(),oid() {
+        SocketLoad() : imbalance(),uid(),oid() {
 
-	}
+        }
 
-	Vector<float> imbalance;
-	Vector<int> uid;
-	Vector<int> oid;
+        Vector<float> imbalance;
+        Vector<int> uid;
+        Vector<int> oid;
     };
+
     float suppload = 0;
     //Problem p;
     int min_core = -1;
@@ -620,9 +621,9 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 
 
         if (do_numa) {
-		int numaid =  Numa::get_numa_node_of_cpu(load[j].cpu_phys_id);
-			sockets_load[numaid].N++;
-			sockets_load[numaid].total_load += load[j].load;
+            int numaid =  Numa::get_numa_node_of_cpu(load[j].cpu_phys_id);
+            sockets_load[numaid].N++;
+            sockets_load[numaid].total_load += load[j].load;
         }
     }
 
@@ -630,15 +631,12 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     machine_load.target = machine_load.total_load / (float)machine_load.N;
 
     for (int i = 0; i < sockets_load.size(); i++) {
-	sockets_load[i].target = sockets_load[i].total_load / (float)sockets_load[i].N;
-	if (do_numa && abs(sockets_load[i].target -  machine_load.target) > _threshold * 2) {
-		click_chatter("Non-numa forced");
-		do_numa=false;
-	}
+        sockets_load[i].target = sockets_load[i].total_load / (float)sockets_load[i].N;
+        if (do_numa && abs(sockets_load[i].target -  machine_load.target) > _threshold * 2) {
+            click_chatter("Non-numa forced");
+            do_numa=false;
+        }
     }
-
-
-    //imbalance.resize(machine_load.N);
 
     //suppload = (machine_load.N *_target_load) - totalload; //Total power that we have in excess
 
@@ -705,7 +703,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
             //Fix imbalance without the removed core
             for (int i = 0; i < machine_load.N; i++) {
                 //Imbalance is positive if the core should loose some load
-		imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (machine_load.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].second) / 2.0f);
+        imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (machine_load.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].second) / 2.0f);
             }
             //cimbalance = imbalance;
 
@@ -736,19 +734,19 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
                 if (unlikely(balancer->_verbose))
                     click_chatter("Not enough cores...");
             } else {
-		//imbalance.resize(imbalance.size() + 1);
-		machine_load.N = machine_load.N+1;
-		machine_load.target = machine_load.total_load / (float)machine_load.N;
+                //imbalance.resize(imbalance.size() + 1);
+                machine_load.N = machine_load.N+1;
+                machine_load.target = machine_load.total_load / (float)machine_load.N;
                 int aid = load.size();
                 load.push_back(Load(a_phys_id));
                 map_phys_to_id[a_phys_id] = aid;
                 if (do_numa) {
-			//We disable numa in any case, to allow inter-numa shuffling
-			//int numaid =  Numa::get_numa_node_of_cpu(a_phys_id);
-				//sockets_load[numaid].N++;
-				//sockets_load[numaid].target = sockets_load[numaid].total_load / (float)sockets_load[numaid].N;;
-				////sockets_load[numaid].imbalance.resize(sockets_load[numaid].imbalance.size() + 1);
-				do_numa = false;
+            //We disable numa in any case, to allow inter-numa shuffling
+            //int numaid =  Numa::get_numa_node_of_cpu(a_phys_id);
+                //sockets_load[numaid].N++;
+                //sockets_load[numaid].target = sockets_load[numaid].total_load / (float)sockets_load[numaid].N;;
+                ////sockets_load[numaid].imbalance.resize(sockets_load[numaid].imbalance.size() + 1);
+                do_numa = false;
                 }
             }
         }
@@ -759,12 +757,12 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     }
 
     //We need to fix the first numa socket if numa awareness has been disabled
-    if (_numa && !do_numa) {
-	sockets_load.resize(1);
-	sockets_load[0].N = machine_load.N;
-	sockets_load[0].target = machine_load.target;
-	sockets_load[0].total_load = machine_load.total_load;
-	numamax = 1;
+    if (!do_numa) {
+        sockets_load.resize(1);
+        sockets_load[0].N = machine_load.N;
+        sockets_load[0].target = machine_load.target;
+        sockets_load[0].total_load = machine_load.total_load;
+        numamax = 1;
     }
 
 
@@ -818,11 +816,13 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     //Vector<int> machine_oid;
     //Vector<int> machine_uid;
 
+    //imbalance.resize(machine_load.N);
     //Prepare per-numa socket data structures
     for (int i = 0; i < numamax; i++) {
         SocketLoad &socket = sockets_load[i];
         Vector<float> &imbalance = socket.imbalance;
-        imbalance.resize(socket.N);
+        imbalance.resize(machine_load.N); //imbalance have "load" ids, not per-socket ids
+        //click_chatter("Socket %d/%d has %d cores", i,numamax,socket.N);
     }
 
     int noverloaded = 0;
@@ -838,7 +838,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
         Vector<float> &imbalance = socket.imbalance;
 
         if (_moved[cpuid]) {
-		imbalance[i] = 0;
+            imbalance[i] = 0;
             _moved[cpuid] = false;
             //click_chatter("Cpu %d just moved",i);
             continue;
@@ -882,112 +882,112 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
 
 #ifndef BALANCE_TWO_PASS
 
-	Vector<Vector<Pair<int,int>>> omoves(noverloaded, Vector<Pair<int,int>>());
+    Vector<Vector<Pair<int,int>>> omoves(noverloaded, Vector<Pair<int,int>>());
 
-	for (int nid = 0; nid < numamax; nid++) {
-		SocketLoad &socket = sockets_load[nid];
-		Vector<float> &imbalance = socket.imbalance;
+    for (int nid = 0; nid < numamax; nid++) {
+        SocketLoad &socket = sockets_load[nid];
+        Vector<float> &imbalance = socket.imbalance;
 
-		if (!(socket.oid.size() > 0 && socket.uid.size() > 0))
-			continue;
-			//Count the number of packets for this core
-			/*
-			 * We rebalance all buckets of overloaded to the set of underloaded
-			 */
-			unsigned long long all_overloaded_count = 0;
-			for (int u = 0; u < socket.oid.size(); u++) {
-				all_overloaded_count += load[socket.oid[u]].npackets;
-			}
+        if (!(socket.oid.size() > 0 && socket.uid.size() > 0))
+            continue;
+            //Count the number of packets for this core
+            /*
+             * We rebalance all buckets of overloaded to the set of underloaded
+             */
+            unsigned long long all_overloaded_count = 0;
+            for (int u = 0; u < socket.oid.size(); u++) {
+                all_overloaded_count += load[socket.oid[u]].npackets;
+            }
 
-			struct Bucket{
-				int oid_id;
-				int bucket_id;
-				int cpu_id;
-			};
+            struct Bucket{
+                int oid_id;
+                int bucket_id;
+                int cpu_id;
+            };
 
-		Vector<Bucket> buckets_indexes;
-		Vector<int> oid;
-		for (int i = 0; i < socket.oid.size(); i++) {
-			if (!do_numa || Numa::get_numa_node_of_cpu(socket.oid[i]) == nid) {
-				oid.push_back(socket.oid[i]);
-			}
-		}
-		Vector<int> uid;
-		for (int i = 0; i < socket.uid.size(); i++) {
-			if (!do_numa || Numa::get_numa_node_of_cpu(socket.uid[i]) == nid) {
-				uid.push_back(socket.uid[i]);
-			}
-		}
-		for (int j = 0; j < _table.size(); j++) {
-			if (get_node_count(j) == 0) continue;
-			for (int u = 0; u < oid.size(); u++) {
-				if (map_phys_to_id[_table[j]] == oid[u]) {
-					int numa = 0;
-					if (do_numa) {
-						numa = Numa::get_numa_node_of_cpu(_table[j]);
-					}
-					buckets_indexes.push_back(Bucket{.oid_id =u,.bucket_id =j, .cpu_id = oid[u]});
-					break;
-				}
-			}
-		}
+        Vector<Bucket> buckets_indexes;
+        Vector<int> oid;
+        for (int i = 0; i < socket.oid.size(); i++) {
+            if (!do_numa || Numa::get_numa_node_of_cpu(socket.oid[i]) == nid) {
+                oid.push_back(socket.oid[i]);
+            }
+        }
+        Vector<int> uid;
+        for (int i = 0; i < socket.uid.size(); i++) {
+            if (!do_numa || Numa::get_numa_node_of_cpu(socket.uid[i]) == nid) {
+                uid.push_back(socket.uid[i]);
+            }
+        }
+        for (int j = 0; j < _table.size(); j++) {
+            if (get_node_count(j) == 0) continue;
+            for (int u = 0; u < oid.size(); u++) {
+                if (map_phys_to_id[_table[j]] == oid[u]) {
+                    int numa = 0;
+                    if (do_numa) {
+                        numa = Numa::get_numa_node_of_cpu(_table[j]);
+                    }
+                    buckets_indexes.push_back(Bucket{.oid_id =u,.bucket_id =j, .cpu_id = oid[u]});
+                    break;
+                }
+            }
+        }
 
-		if (buckets_indexes.size() == 0)
-			continue;
-		BucketMapTargetProblem pm(buckets_indexes.size(), uid.size(), oid.size());
+        if (buckets_indexes.size() == 0)
+            continue;
+        BucketMapTargetProblem pm(buckets_indexes.size(), uid.size(), oid.size());
 
-		//Compute load for each buckets
-		for (int i = 0; i < buckets_indexes.size(); i++) {
-			Bucket& b = buckets_indexes[i];
-			int j = b.bucket_id;
-			double c = get_node_count(j);
-			pm.buckets_load[i] = (((double) c / (double)load[b.cpu_id].npackets)*load[b.cpu_id].load);
-			pm.buckets_max_idx[i] = b.oid_id;
-			//click_chatter("Bucket %d (%d) load %f", i ,j, b);
-		}
+        //Compute load for each buckets
+        for (int i = 0; i < buckets_indexes.size(); i++) {
+            Bucket& b = buckets_indexes[i];
+            int j = b.bucket_id;
+            double c = get_node_count(j);
+            pm.buckets_load[i] = (((double) c / (double)load[b.cpu_id].npackets)*load[b.cpu_id].load);
+            pm.buckets_max_idx[i] = b.oid_id;
+            //click_chatter("Bucket %d (%d) load %f", i ,j, b);
+        }
 
-		for (int i = 0; i < uid.size(); i++) {
-			pm.target[i] = imbalance[uid[i]];
-		}
+        for (int i = 0; i < uid.size(); i++) {
+            pm.target[i] = imbalance[uid[i]];
+        }
 
-		for (int i = 0; i < oid.size(); i++) {
-			pm.max[i] = -imbalance[oid[i]];
-		}
+        for (int i = 0; i < oid.size(); i++) {
+            pm.max[i] = -imbalance[oid[i]];
+        }
 
-		pm.solve(balancer);
+        pm.solve(balancer);
 
-		for (int i = 0; i < pm.buckets_load.size(); i++) {
-			Bucket& b = buckets_indexes[i];
-			int to_uid = pm.transfer[i];
-			if (to_uid == -1) continue;
+        for (int i = 0; i < pm.buckets_load.size(); i++) {
+            Bucket& b = buckets_indexes[i];
+            int to_uid = pm.transfer[i];
+            if (to_uid == -1) continue;
 
-			if (unlikely(balancer->_verbose > 2))
-				click_chatter("B idx %d to ucpu %d",i,to_uid);
-			int to_cpu = uid[to_uid];
-			int from_cpu = oid[pm.buckets_max_idx[i]];
-			imbalance[from_cpu] += pm.buckets_load[i];
-			imbalance[to_cpu] -= pm.buckets_load[i];
+            if (unlikely(balancer->_verbose > 2))
+                click_chatter("B idx %d to ucpu %d",i,to_uid);
+            int to_cpu = uid[to_uid];
+            int from_cpu = oid[pm.buckets_max_idx[i]];
+            imbalance[from_cpu] += pm.buckets_load[i];
+            imbalance[to_cpu] -= pm.buckets_load[i];
 
-			if (unlikely(balancer->_verbose))
-				click_chatter("Move bucket %d from core %d to core %d",b.bucket_id,_table[b.bucket_id], load[to_cpu].cpu_phys_id);
+            if (unlikely(balancer->_verbose))
+                click_chatter("Move bucket %d from core %d to core %d",b.bucket_id,_table[b.bucket_id], load[to_cpu].cpu_phys_id);
 
-			if (balancer->_manager) {
-				omoves[pm.buckets_max_idx[i]].push_back(Pair<int,int>(b.bucket_id, load[to_cpu].cpu_phys_id));
-			}
-			_table[b.bucket_id] = load[to_cpu].cpu_phys_id;
+            if (balancer->_manager) {
+                omoves[pm.buckets_max_idx[i]].push_back(Pair<int,int>(b.bucket_id, load[to_cpu].cpu_phys_id));
+            }
+            _table[b.bucket_id] = load[to_cpu].cpu_phys_id;
 
-			_moved[load[to_cpu].cpu_phys_id] = true;
-			moved = true;
-		}
-		if (balancer->_manager) {
-			for (int i = 0; i < oid.size(); i++) {
-				if (omoves[i].size() > 0) {
-					int from_phys_id = load[oid[i]].cpu_phys_id;
-					balancer->_manager->pre_migrate((DPDKDevice*)_fd,from_phys_id,omoves[i]);
-				}
-			}
-		}
-	}
+            _moved[load[to_cpu].cpu_phys_id] = true;
+            moved = true;
+        }
+        if (balancer->_manager) {
+            for (int i = 0; i < oid.size(); i++) {
+                if (omoves[i].size() > 0) {
+                    int from_phys_id = load[oid[i]].cpu_phys_id;
+                    balancer->_manager->pre_migrate((DPDKDevice*)_fd,from_phys_id,omoves[i]);
+                }
+            }
+        }
+    }
 
 #else
         if (!(socket.oid.size() > 0 && socket.uid.size() > 0))
@@ -1152,40 +1152,40 @@ reagain:
         } //For each cores
 
 #endif
-	total_imbalance = 0;
+    total_imbalance = 0;
 
 
 
-	if (moved) {
-		for (int nid = 0; nid < numamax; nid++) {
-			SocketLoad &socket = sockets_load[nid];
-			for (unsigned i = 0; i < socket.N; i++) {
-				total_imbalance += abs(socket.imbalance[i]);
-				if (abs(socket.imbalance[i]) > _threshold * 2 ) {
-					if (unlikely(balancer->_verbose))
-						click_chatter("Imbalance of core %d left to %f, that's quite a MISS.", i, socket.imbalance[i]);
-				}
-			}
-		}
+    if (moved) {
+        for (int nid = 0; nid < numamax; nid++) {
+            SocketLoad &socket = sockets_load[nid];
+            for (unsigned i = 0; i < socket.N; i++) {
+                total_imbalance += abs(socket.imbalance[i]);
+                if (abs(socket.imbalance[i]) > _threshold * 2 ) {
+                    if (unlikely(balancer->_verbose))
+                        click_chatter("Imbalance of core %d left to %f, that's quite a MISS.", i, socket.imbalance[i]);
+                }
+            }
+        }
 
-		Timestamp t = Timestamp::now_steady();
-		auto v = (t-begin).usecval();
-		if (unlikely(balancer->_verbose || v > 100))
-			click_chatter("Solution computed in %d usec", v);
+        Timestamp t = Timestamp::now_steady();
+        auto v = (t-begin).usecval();
+        if (unlikely(balancer->_verbose || v > 100))
+            click_chatter("Solution computed in %d usec", v);
 
-		update_reta();
-		if (balancer->_manager) {
-			for (int nid = 0; nid < numamax; nid++) {
-				SocketLoad &socket = sockets_load[nid];
-				for (int i = 0; i < socket.oid.size(); i++) {
-					if (omoves[i].size() > 0) {
-						int from_phys_id =  load[socket.oid[i]].cpu_phys_id;
-						balancer->_manager->post_migrate((DPDKDevice*)_fd,from_phys_id);
-					}
-				}
-			}
-		}
-	}
+        update_reta();
+        if (balancer->_manager) {
+            for (int nid = 0; nid < numamax; nid++) {
+                SocketLoad &socket = sockets_load[nid];
+                for (int i = 0; i < socket.oid.size(); i++) {
+                    if (omoves[i].size() > 0) {
+                        int from_phys_id =  load[socket.oid[i]].cpu_phys_id;
+                        balancer->_manager->post_migrate((DPDKDevice*)_fd,from_phys_id);
+                    }
+                }
+            }
+        }
+    }
 
 
     if (!_counter_is_xdp)
@@ -1367,7 +1367,7 @@ int MethodPianoRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
             .read_or_set("IMBALANCE_ALPHA", i, 1)
             .read_or_set("IMBALANCE_THRESHOLD", threshold, 0.02) //Do not scale core underloaded or overloaded by this threshold
             .read_or_set("DANCER", _dancer, false)
-            .read_or_set("NUMA", _numa, true)
+            .read_or_set("NUMA", _numa, false)
             .consume() < 0)
         return -1;
     _target_load = t;
