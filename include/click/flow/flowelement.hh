@@ -305,6 +305,20 @@ private:
  * FlowSpaceElement
  */
 
+template<typename T>
+FlowSpaceElement<T>::FlowSpaceElement() : VirtualFlowSpaceElement() {
+}
+
+template<typename T>
+int
+FlowSpaceElement<T>::initialize(ErrorHandler *errh) {
+    if (_flow_data_offset == -1) {
+        return errh->error("No FlowClassifier() element sets the flow context for %s !",name().c_str());
+    }
+    return 0;
+}
+
+
 template<class Derived, typename T>
 FlowStateElement<Derived, T>::FlowStateElement() : VirtualFlowSpaceElement() {
 }
