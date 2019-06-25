@@ -19,7 +19,8 @@ CLICK_DECLS
 //If 0, it just uses ports in loop. Fine for slow rates, but not realistic
 //If 1, prevent reusing ports while connections are active
 #define HAVE_NAT_NEVER_REUSE 1 //Actually for the LB
-#define NAT_COLLIDE 1  //Avoid port collisions, same but for the NAT
+
+#define NAT_COLLIDE 0  //Avoid port collisions, same but for the NAT
 
 #if DEBUG_NAT>=2
 # define nat_debug_chatter(args...) click_chatter(args)
@@ -228,7 +229,7 @@ inline void release_ref(NATCommon* &ref, const bool &own_state) {
     nat_debug_chatter("fcb->ref for port %d is %d, will be %d",ntohs(ref->port), ref->ref, ref->ref - 1);
     lb_assert((int32_t)ref->ref >= 1);
     if (!own_state)
-	ref->closing = 1;
+	    ref->closing = 1;
     if (ref->ref.dec_and_test()) {
         nat_debug_chatter("Recycling %d !", ntohs(ref->port));
 

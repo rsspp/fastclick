@@ -106,7 +106,6 @@ NATCommon* FlowIPNAT::pick_port() {
         }*/
 #else
         //Reinsert the reference at the back
-        static_assert(false);
         _state->available_ports.insert(ref);
 #endif
     }
@@ -144,7 +143,6 @@ void FlowIPNAT::release_flow(NATEntryIN* fcb) {
 #if NAT_COLLIDE
 	release_ref(fcb->ref, _own_state);
 #else
-    _state->available_ports.insert(fcb->ref);
     fcb->ref = 0;
 #endif
 
@@ -215,7 +213,7 @@ bool FlowIPNATReverse::new_flow(NATEntryOUT* fcb, Packet* p) {
     //No ref++, we keep the table reference
     lb_assert(fcb->ref->ref > 0);
     if (fcb->ref->ref == 1) { //Connection was reset by the inserter
-	click_chatter("Got a closed connection");
+	    click_chatter("Got a closed connection");
 	release_ref(fcb->ref, _in->_own_state);
         return false;
     }
@@ -228,7 +226,6 @@ void FlowIPNATReverse::release_flow(NATEntryOUT* fcb) {
 #if NAT_COLLIDE
 	release_ref(fcb->ref, _in->_own_state);
 #else
-    _state->available_ports.insert(fcb->ref);
     fcb->ref = 0;
 #endif
 
