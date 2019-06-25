@@ -150,7 +150,7 @@ public:
         return _size > 0;
     }
 
-    inline void initialize(int size) {
+    inline void initialize(int size, const char* = 0) {
         _size = size;
         ring = new T[size];
     }
@@ -210,6 +210,7 @@ template <typename T> class MPMCDynamicRing {
     }
 };
 
+
 template <typename T> class MPSCDynamicRing : public MPMCDynamicRing<T> {
     public:
 
@@ -225,7 +226,38 @@ template <typename T> class MPSCDynamicRing : public MPMCDynamicRing<T> {
             return o;
     }
 };
-#
+#else
+/**
+ * Ring with size set at initialization time
+ *
+ * NOT MT-Safe
+ */
+template <typename T> class MPMCDynamicRing : public SPSCDynamicRing<T> {
+	Spinlock _lock;
+
+public:
+
+	MPMCDynamicRing() : _lock() {
+
+	}
+
+    inline T extract() {
+        _lock.acquire();
+        T v= SPSCDynamicRing<T> :: extract();
+        _lock.release();
+        return v;
+    }
+
+    inline bool insert(T v) {
+	_lock.acquire();
+	bool r = SPSCDynamicRing<T> :: insert(v);
+	_lock.release();
+	return r;
+    }
+
+};
+template <typename T> class MPSCDynamicRing : public MPMCDynamicRing<T> {};
+
 #endif
 
 
@@ -281,21 +313,24 @@ public:
 #define SPSCRing Ring
 
 template <typename T, size_t MAX_SIZE> class MPMCLIFO {
+private:
     SimpleSpinlock _lock;
+
 protected:
 
-inline bool has_space() {
-    return _count < MAX_SIZE;
-}
+	inline bool has_space() {
+		return _count < MAX_SIZE;
+	}
 
-inline bool is_empty() {
-   return _first == 0;
-}
+	inline bool is_empty() {
+	   return _first == 0;
+	}
 
 public:
-int id;
-T _first;
-unsigned int _count;
+	int id;
+	T _first;
+	unsigned int _count;
+
     MPMCLIFO() : _lock(), id(0),_first(0),_count(0) {
 
     }

@@ -112,7 +112,6 @@ void FlowIPManagerMP::process(Packet* p, BatchBuilder& b) {
 		first = true;
 	}
 
-
 	if (b.last == ret) {
 		b.append(p);
 	} else {

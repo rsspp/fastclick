@@ -7,7 +7,7 @@ $VALGRIND click -e "
 FromIPSummaryDump(IN1, STOP true, CHECKSUM true)
 	-> CheckIPHeader(VERBOSE true)
 	-> CheckTCPHeader(VERBOSE true)
-	-> FlowIPManager(RESERVE 64)
+	-> FlowIPManagerHMP(RESERVE 64)
     -> FlowIPNAT(FCB_OFFSET 16, SIP 1.0.0.1)
     -> CheckIPHeader(VERBOSE true)
 	-> CheckTCPHeader(VERBOSE true)
@@ -29,14 +29,16 @@ FromIPSummaryDump(IN1, STOP true, CHECKSUM true)
 
 %expect OUT1
 1.0.0.1 1024 2.0.0.2 21 T 0 0 "x" .
-1.0.0.1 1024 2.0.0.2 21 T 1 0 "PORT 1,0,0,1,4,1\n" .
-1.0.0.1 1024 2.0.0.2 21 T 18 0 "fubar\n" .
-2.0.0.2 21 200.200.200.200 30 T 0 0 "" .
-2.0.0.2 21 200.200.200.200 30 T 0 1 "" .
-2.0.0.2 21 200.200.200.200 30 T 0 30 "" .
-2.0.0.2 21 200.200.200.200 30 T 0 0 "" sack1-30
-2.0.0.2 21 200.200.200.200 30 T 0 0 "" sack1-10
-2.0.0.2 21 200.200.200.200 30 T 0 0 "" sack1-10;sack1-30;sack30-32
+1.0.0.1 1024 2.0.0.2 21 T 1 0 "PORT 200,200,200,200,200,200\n" .
+1.0.0.1 1024 2.0.0.2 21 T 30 0 "fubar\n" .
+1.0.0.1 1025 1.0.0.1 1024 T 0 0 "" .
+1.0.0.1 1025 1.0.0.1 1024 T 0 1 "" .
+1.0.0.1 1025 1.0.0.1 1024 T 0 18 "" .
+1.0.0.1 1025 1.0.0.1 1024 T 0 0 "" sack1-18
+1.0.0.1 1025 1.0.0.1 1024 T 0 0 "" sack1-10
+1.0.0.1 1025 1.0.0.1 1024 T 0 0 "" sack1-10;sack1-18;sack18-20
+
+
 
 %ignorex
 !.*

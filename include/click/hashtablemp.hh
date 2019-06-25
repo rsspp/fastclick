@@ -318,6 +318,8 @@ class HashContainerMP { public:
 
     inline ptr find_insert(const K &key, const V &value);
 
+    inline ptr find_create(const K &key,std::function<V(void)> on_create);
+
     /** @brief Replace an item if it exists, insert it otherwise. Do not look at use count ! */
     inline void replace(const K &key, const V &value, std::function<void(V&value)> on_replace);
 
@@ -340,6 +342,11 @@ class HashContainerMP { public:
 
     inline void disable_mt() {
         _mt = false;
+    }
+
+    inline void resize_clear(size_t n) {
+        deinitialize();
+        initialize(n);
     }
   protected:
     bool _mt;
@@ -528,7 +535,7 @@ HashContainerMP<K,V,Item>::erase(const K &key) {
     find_remove_clean(key, [](V&){}, [](V&){return false;});
 }
 
-#define MAKE_FIND_INSERT(ptr_type,on_exists) \
+#define MAKE_FIND_INSERT(ptr_type,on_exists,value) \
     if (likely(_mt))\
         _table.read_begin();\
     size_type b = bucket(key);\
@@ -572,7 +579,7 @@ retry:\
 template <typename K, typename V, typename Item>
 inline typename HashContainerMP<K,V,Item>::ptr
 HashContainerMP<K,V,Item>::find_insert(const K &key,const V &value) {
-    MAKE_FIND_INSERT(ptr,(void));
+    MAKE_FIND_INSERT(ptr,(void),value);
     click_hashmp_assert(p.refcnt() > 0);
     return p;
 }
@@ -580,13 +587,20 @@ HashContainerMP<K,V,Item>::find_insert(const K &key,const V &value) {
 template <typename K, typename V, typename Item>
 inline void
 HashContainerMP<K,V,Item>::replace(const K &key,const V &value, std::function<void(V&value)> on_replace) {
-    MAKE_FIND_INSERT(ptr,{on_replace(*pprev->item.unprotected_ptr());pprev->item = value;});
+    MAKE_FIND_INSERT(ptr,{on_replace(*pprev->item.unprotected_ptr());pprev->item = value;},value);
+}
+
+template <typename K, typename V, typename Item>
+inline typename HashContainerMP<K,V,Item>::ptr
+HashContainerMP<K,V,Item>::find_create(const K &key,std::function<V(void)> on_create) {
+    MAKE_FIND_INSERT(ptr,(void),on_create());
+    return p;
 }
 
 template <typename K, typename V, typename Item>
 inline typename HashContainerMP<K,V,Item>::write_ptr
 HashContainerMP<K,V,Item>::find_insert_write(const K &key,const V &value) {
-    MAKE_FIND_INSERT(write_ptr,(void));
+    MAKE_FIND_INSERT(write_ptr,(void),value);
     click_hashmp_assert(p.refcnt() == -1);
     return p;
 }
@@ -594,7 +608,7 @@ HashContainerMP<K,V,Item>::find_insert_write(const K &key,const V &value) {
 template <typename K, typename V, typename Item>
 inline void
 HashContainerMP<K,V,Item>::set(const K &key,const V &value) {
-    MAKE_FIND_INSERT(write_ptr,{*p = value;});
+    MAKE_FIND_INSERT(write_ptr,{*p = value;},value);
 }
 
 

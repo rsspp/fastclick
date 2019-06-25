@@ -47,13 +47,13 @@ public:
 
     void init_assignment(Vector<unsigned> table);
 
-private:
+protected:
 
 
-    	volatile int owner;
-    	Packet* queue;
-    	rte_hash* hash;
-    	FlowControlBlock *fcbs;
+	volatile int owner;
+	Packet* queue;
+	rte_hash* hash;
+	FlowControlBlock *fcbs;
 
 
     int _reserve;
