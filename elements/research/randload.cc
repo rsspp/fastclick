@@ -38,8 +38,8 @@ int RandLoad::initialize(ErrorHandler *errh) {
 void RandLoad::push_batch(int port, PacketBatch* batch) {
 	int r;
     auto fnt = [this,&r](Packet* p)  {
-    	int w = click_random();
-        for (int i = 0; i < w; i ++) {
+	int w =  _min + ((*_gens)() / (UINT_MAX / (_max - _min) ));  //click_random(_min, _max);
+        for (int i = 0; i < w - 1; i ++) {
             r = (*_gens)();
         }
         return p;

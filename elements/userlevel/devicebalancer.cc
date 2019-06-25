@@ -1461,7 +1461,7 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
         .read_or_set("AUTOSCALE", _autoscale, false)
         .read_or_set("ACTIVE", _active, true)
         .read_or_set("VERBOSE", _verbose, true)
-        .read("MANAGER", manager)
+        .read("MANAGER",ElementArg(), manager)
         .consume() < 0)
         return -1;
 

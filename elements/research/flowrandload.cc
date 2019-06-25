@@ -41,7 +41,7 @@ int FlowRandLoad::initialize(ErrorHandler *errh) {
 
 void FlowRandLoad::push_batch(int port, RandLoadState* flowdata, PacketBatch* batch) {
 	if (flowdata->w == 0) {
-		flowdata->w = click_random(_min, _max);
+		flowdata->w =  _min + ((*_gens)() / (UINT_MAX / (_max - _min) ));  //click_random(_min, _max);
 	}
 	int r;
     auto fnt = [this,flowdata,&r](Packet* p) {

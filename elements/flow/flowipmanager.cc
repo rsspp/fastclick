@@ -27,14 +27,15 @@ FlowIPManager::~FlowIPManager() {
 int
 FlowIPManager::configure(Vector<String> &conf, ErrorHandler *errh)
 {
+    int _def_thread = click_max_cpu_ids();
 
     if (Args(conf, this, errh)
     		.read_or_set_p("GROUPS", _groups, 512)
     		.read_or_set_p("CAPACITY", _table_size, 65536)
             .read_or_set("RESERVE",_reserve, 0)
+            .read("DEF_THREAD", _def_thread)
             .complete() < 0)
         return -1;
-
 
     return 0;
 }
@@ -78,10 +79,15 @@ int FlowIPManager::initialize(ErrorHandler *errh) {
 	    	return errh->error("Could not init flow table %d!", i);
 
 	    _tables[i].fcbs =  (FlowControlBlock*)CLICK_ALIGNED_ALLOC(_flow_state_size_full * _table_size);
+        bzero(_tables[i].fcbs,_flow_state_size_full * _table_size);
 	    CLICK_ASSERT_ALIGNED(_tables[i].fcbs);
 	    if (!_tables[i].fcbs)
 	    	return errh->error("Could not init data table %d!", i);
-	}
+        if (_def_thread > 0)
+            _tables[i].owner = i % _def_thread;
+
+
+    }
 
 
 
