@@ -423,7 +423,6 @@ int DPDKDevice::set_mode(
     } else if ((mode == "rss") || (mode == "")) {
 #endif
         m = ETH_MQ_RX_RSS;
-        click_chatter("Mode is RSS !");
         if (mode == "")
             mode = "rss";
     } else if (mode == "vmdq") {
@@ -525,7 +524,7 @@ int DPDKDevice::initialize_device(ErrorHandler *errh)
 #endif
 
     info.mq_mode = (info.mq_mode == -1? ETH_MQ_RX_RSS : info.mq_mode);
-    click_chatter("Final mode is %d",info.mq_mode);
+    click_chatter("Rx mode is %s", get_mode_str().c_str());
     dev_conf.rxmode.mq_mode = info.mq_mode;
 #if RTE_VERSION < RTE_VERSION_NUM(18,8,0,0)
     dev_conf.rxmode.hw_vlan_filter = 0;
