@@ -27,6 +27,7 @@
 #include <click/straccum.hh>
 
 #include "fromdpdkdevice.hh"
+#include "tscclock.hh"
 #include "todpdkdevice.hh"
 #if HAVE_JSON
 #include "../json/json.hh"
@@ -57,13 +58,19 @@ FromDPDKDevice::~FromDPDKDevice()
 void *
 FromDPDKDevice::cast(const char *n)
 {
+#if HAVE_DPDK_READ_CLOCK
+    if (String(name) == "UserClockSource")
+        return &dpdk_clock;
+    else
+#endif
     if (strcmp(n, "EthernetDevice") == 0)
         return get_device()->get_eth_device();
     else if (strcmp(n, "DPDKDevice") == 0)
         return get_device();
     else
-	return Element::cast(n);
+        return RXQueueDevice::cast(n);
 }
+
 
 int FromDPDKDevice::configure(Vector<String> &conf, ErrorHandler *errh)
 {
@@ -75,6 +82,7 @@ int FromDPDKDevice::configure(Vector<String> &conf, ErrorHandler *errh)
     uint16_t mtu = 0;
     bool has_mac = false;
     bool has_mtu = false;
+    bool set_timestamp = false;
     FlowControlMode fc_mode(FC_UNSET);
     String mode = "";
     int num_pools = 0;
@@ -106,6 +114,7 @@ int FromDPDKDevice::configure(Vector<String> &conf, ErrorHandler *errh)
         .read("MAXQUEUES",maxqueues)
         .read("RX_INTR", _rx_intr)
         .read("MAX_RSS", max_rss).read_status(has_rss)
+        .read("TIMESTAMP", set_timestamp)
         .read("PAUSE", fc_mode)
         .read("ISOLATE", isolate)
         .complete() < 0)
@@ -120,6 +129,8 @@ int FromDPDKDevice::configure(Vector<String> &conf, ErrorHandler *errh)
 
     if (_use_numa) {
         numa_node = DPDKDevice::get_port_numa_node(_dev->port_id);
+        if (_numa_node_override > -1)
+            numa_node = _numa_node_override;
     }
 
     int r;
@@ -149,6 +160,15 @@ int FromDPDKDevice::configure(Vector<String> &conf, ErrorHandler *errh)
     if (fc_mode != FC_UNSET)
         _dev->set_init_fc_mode(fc_mode);
 
+    if (set_timestamp) {
+#if RTE_VERSION >= RTE_VERSION_NUM(18,02,0,0)
+        _dev->set_rx_offload(DEV_RX_OFFLOAD_TIMESTAMP);
+        _set_timestamp = true;
+#else
+        errh->error("HW Timestamping is not supported before DPDK 18.02");
+#endif
+    }
+
     if (has_rss)
         _dev->set_init_rss_max(max_rss);
 
@@ -170,6 +190,26 @@ int FromDPDKDevice::configure(Vector<String> &conf, ErrorHandler *errh)
 
     return r;
 }
+
+#if HAVE_DPDK_READ_CLOCK
+uint64_t FromDPDKDevice::read_clock(void* thunk) {
+    FromDPDKDevice* fd = (FromDPDKDevice*)thunk;
+    uint64_t clock;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    if (rte_eth_read_clock(fd->_dev->port_id, &clock) == 0)
+        return clock;
+#pragma GCC diagnostic pop
+    return -1;
+}
+
+struct UserClockSource dpdk_clock {
+    .get_current_tick = &FromDPDKDevice::read_clock,
+    .get_tick_hz = 0,
+};
+#endif
+
+
 
 int FromDPDKDevice::initialize(ErrorHandler *errh)
 {
@@ -200,6 +240,19 @@ int FromDPDKDevice::initialize(ErrorHandler *errh)
     if (all_initialized()) {
         ret = DPDKDevice::initialize(errh);
         if (ret != 0) return ret;
+    }
+
+    if (_set_timestamp) {
+#if HAVE_DPDK_READ_CLOCK
+        uint64_t t;
+        int err;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        if ((err = rte_eth_read_clock(_dev->port_id, &t)) != 0) {
+            return errh->error("Device does not support queryig internal time ! Disable hardware timestamping. Error %d", err);
+        }
+#pragma GCC diagnostic pop
+#endif
     }
 
     if (_rx_intr >= 0) {
@@ -299,6 +352,12 @@ bool FromDPDKDevice::run_task(Task *t)
             if (_set_paint_anno) {
                 SET_PAINT_ANNO(p, iqueue);
             }
+
+#if RTE_VERSION >= RTE_VERSION_NUM(18,02,0,0)
+            if (_set_timestamp && (pkts[i]->ol_flags & PKT_RX_TIMESTAMP)) {
+                p->timestamp_anno().assignlong(pkts[i]->timestamp);
+            }
+#endif
 #if HAVE_BATCH
             if (head == NULL)
                 head = PacketBatch::start_head(p);
@@ -734,6 +793,7 @@ int FromDPDKDevice::xstats_handler(
     FromDPDKDevice *fd = static_cast<FromDPDKDevice *>(e);
     if (!fd->_dev)
         return -1;
+
     int op = (intptr_t)handler->read_user_data();
     switch (op) {
         case h_xstats: {
@@ -921,6 +981,7 @@ void FromDPDKDevice::add_handlers()
 }
 
 CLICK_ENDDECLS
+
 ELEMENT_REQUIRES(userlevel dpdk QueueDevice)
 EXPORT_ELEMENT(FromDPDKDevice)
 ELEMENT_MT_SAFE(FromDPDKDevice)

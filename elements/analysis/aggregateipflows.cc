@@ -118,7 +118,7 @@ AggregateIPFlows::configure(Vector<String> &conf, ErrorHandler *errh)
 	.read("SOURCE", ElementArg(), _packet_source)
 #endif
 	.read("FRAGMENTS", fragments).read_status(fragments_parsed)
-    .read_or_set("SYMETRIC", _symetric, true)
+	.read_or_set("SYMETRIC", _symetric, true)
 	.complete() < 0)
 	return -1;
 

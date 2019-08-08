@@ -173,12 +173,5 @@ AverageCounter::add_handlers()
   add_write_handler("reset", averagecounter_reset_write_handler, 0, Handler::BUTTON);
 }
 
-AverageCounterMP::AverageCounterMP()
-{
-    _mp = true;
-}
-
 CLICK_ENDDECLS
 EXPORT_ELEMENT(AverageCounter)
-EXPORT_ELEMENT(AverageCounterMP)
-ELEMENT_MT_SAFE(AverageCounterMP)

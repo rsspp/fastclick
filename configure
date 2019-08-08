@@ -7289,6 +7289,7 @@ if test "x$enable_dpdk" = "xyes"; then
         { $as_echo "$as_me:${as_lineno-$LINENO}: Metron is not yet compatible with pkgconfig-based DPDK installation. $RTE_SDK will be used." >&5
 $as_echo "$as_me: Metron is not yet compatible with pkgconfig-based DPDK installation. $RTE_SDK will be used." >&6;}
     fi
+      RTE_LIB="$RTE_SDK_BIN/lib"
       if test ! -f "$RTE_SDK_BIN/include/rte_eal.h"; then
         as_fn_error $? "
 =========================================
@@ -7322,6 +7323,18 @@ or install DPDK using meson, or he system package manager.
 
       DPDK_INCLUDES=-I${RTE_SDK_BIN}/include/
 
+
+      { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether DPDK has rte_eth_read_clock" >&5
+$as_echo_n "checking whether DPDK has rte_eth_read_clock... " >&6; }
+      if readelf -Ws "$RTE_LIB/librte_ethdev.a" | grep rte_eth_read_clock &> /dev/null ; then
+        { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+        $as_echo "#define HAVE_DPDK_READ_CLOCK 1" >>confdefs.h
+
+      else
+        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+      fi
 
     $as_echo "#define HAVE_DPDK 1" >>confdefs.h
 

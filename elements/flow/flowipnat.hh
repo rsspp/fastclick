@@ -85,18 +85,19 @@ typedef HashTableMP<uint16_t,NATEntryOUT> NATHashtable; //Table used to pass the
 #define NAT_FLOW_TIMEOUT 2 * 1000 //Flow timeout
 
 /**
- * Efficient MiddleClick-based NAT
+ * Efficient FCB-based NAT
  *
  * Unlike rewriter, we use two separate elements instead of two ports, one for
  * the mapping side and another one (FlowIPNATReverse) for the reverse side.
  *
  * Port allocation is done using a FIFO queue of ports, per thread. We divide
- * the 1024-65530 range into then number of threads that will pass by.
+ * the 1024-65530 range into then number of threads that will pass by. Nothing
+ * prevents using multiple ips, different ranges, etc. It's just not done yet.
  *
  * The mapper (this element) pass mappings to the reverse using a thread safe
- * hash-table when a new mapping is done. Afterwards the middleclick scratchpad
+ * hash-table when a new mapping is done. Afterwards the FCB scratchpad
  * is set and the hash-table is never used again.
- * When reverse see a new flow, it looks for it in the hash-table and remove it,
+ * When reverse see a new flow, it looks for it in the hash-table and removes it,
  * and sets its scratchpad, then never use the hash-table again.
  *
  * Therefore both side only use their scratchpad for the rest of the flow, that

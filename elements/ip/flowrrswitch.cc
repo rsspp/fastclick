@@ -64,7 +64,7 @@ unsigned
 FlowRRSwitch::round_robin()
 {
     if (_load_aware) {
-        int min = INT_MAX;
+        unsigned min = INT_MAX;
         int min_i = -1;
         for (int i = 0; i < _max; i++) {
             unsigned l = _load.unchecked_at((i + _current_port) % _max);

@@ -19,7 +19,16 @@ CLICK_DECLS
 class DPDKDevice;
 struct rte_hash;
 
-
+/**
+ * FCB packet classifier - cuckoo shared-by-all-threads
+ *
+ * Initialize the FCB stack for every packets passing by.
+ * The classification is done using a unique, thread safe cuckoo hash table.
+ *
+ * This element does not find automatically the FCB layout for FlowElement,
+ * neither set the offsets for placement in the FCB automatically. Look at
+ * the middleclick branch for alternatives.
+ */
 class FlowIPManagerMP: public BatchElement {
 public:
 

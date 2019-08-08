@@ -90,12 +90,5 @@ AverageCounter::add_count(uint64_t c,uint64_t b) {
     }
 }
 
-
-class AverageCounterMP : public AverageCounter { public:
-    AverageCounterMP() CLICK_COLD;
-
-    const char *class_name() const		{ return "AverageCounterMP"; }
-};
-
 CLICK_ENDDECLS
 #endif

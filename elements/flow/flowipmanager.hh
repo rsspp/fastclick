@@ -10,16 +10,15 @@
 #include <click/flow/common.hh>
 
 
-
-
 CLICK_DECLS
 class DPDKDevice;
 struct rte_hash;
 
 struct BatchBuilder {
-	BatchBuilder() : count(0), first(0), last(-1) {
+	BatchBuilder() : first(0), last(-1), count(0) {
 
-	}
+	};
+
 	Packet* first;
 	Packet* tail;
 	int count;
@@ -48,13 +47,21 @@ struct BatchBuilder {
 
 };
 
-
+/**
+ * FCB packet classifier - cuckoo per-thread
+ *
+ * Initialize the FCB stack for every packets passing by.
+ * The classification is done using one cuckoo hashtable per threads. Hence,
+ * when some flows are migratedthe do_migrate function must be called.
+ *
+ * This element does not find automatically the FCB layout for FlowElement,
+ * neither set the offsets for placement in the FCB automatically. Look at
+ * the middleclick branch for alternatives.
+ */
 class FlowIPManager: public BatchElement {
 public:
 
-
     FlowIPManager() CLICK_COLD;
-
 	~FlowIPManager() CLICK_COLD;
 
     const char *class_name() const		{ return "FlowIPManager"; }
