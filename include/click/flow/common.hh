@@ -8,8 +8,6 @@ CLICK_DECLS
 
 #define HAVE_FLOW_DYNAMIC 1
 
-
-
 #if DEBUG_CLASSIFIER > 1
     #define debug_flow_2(...) click_chatter(__VA_ARGS__);
     #define debug_flow(...) click_chatter(__VA_ARGS__);
@@ -23,59 +21,13 @@ CLICK_DECLS
 
 #if DEBUG_CLASSIFIER_CHECK || DEBUG_CLASSIFIER
     #define flow_assert(...) assert(__VA_ARGS__);
-	#define FLOW_INDEX(table,index) table[index]
+       #define FLOW_INDEX(table,index) table[index]
 #else
     #define flow_assert(...)
-	#define FLOW_INDEX(table,index) table.unchecked_at(index)
+       #define FLOW_INDEX(table,index) table.unchecked_at(index)
 #endif
 
-class FlowControlBlock;
 class FCBPool;
-class FlowNode;
-
-
-union FlowNodeData{
-	uint8_t data_8;
-	uint16_t data_16;
-	uint32_t data_32;
-#if HAVE_LONG_CLASSIFICATION
-	uint64_t data_64;
-	void* data_ptr;
-#endif
-
-	explicit FlowNodeData() :
-#if HAVE_LONG_CLASSIFICATION
-	    data_64(0)
-#else
-	    data_32(0)
-#endif
-	{};
-	explicit FlowNodeData(uint8_t d) : data_8(d) {};
-	explicit FlowNodeData(uint16_t d) : data_16(d) {};
-	explicit FlowNodeData(uint32_t d) : data_32(d) {};
-#if HAVE_LONG_CLASSIFICATION
-	explicit FlowNodeData(uint64_t d) : data_64(d) {};
-#else
-	explicit FlowNodeData(uint64_t d) : data_32((uint32_t)d) {};
-#endif
-
-	inline bool equals(const FlowNodeData &other) {
-#if HAVE_LONG_CLASSIFICATION
-        return data_64 == other.data_64;
-#else
-        return data_32 == other.data_32;
-#endif
-	}
-
-	inline uint64_t get_long() const {
-#if HAVE_LONG_CLASSIFICATION
-        return data_64;
-#else
-        return data_32;
-#endif
-	}
-};
-
 class FlowControlBlock;
 
 typedef void (*SubFlowRealeaseFnt)(FlowControlBlock* fcb, void* thunk);
@@ -141,18 +93,15 @@ private:
 		void* thunk;
 #endif
 
-		FlowNode* parent;
+		//FlowNode* parent; this is a construct that depends on the classifier, hence it should be used as normal data
 
         union {
             uint8_t data[0];
             uint16_t data_16[0];
             uint32_t data_32[0];
             uint64_t data_64[0];
-            FlowNodeData node_data[0];
         };
-        inline FlowNodeData& get_data() {
-            return node_data[0];
-        }
+
         //No data after this
 
         void combine_data(uint8_t* data);
@@ -201,7 +150,7 @@ private:
 
 		void print(String prefix, int data_offset =-1, bool show_ptr=false) const;
         void reverse_print();
-        FlowNode* find_root();
+        //FlowNode* find_root();
 
 		bool empty();
 
@@ -389,7 +338,7 @@ public:
 
     inline FlowControlBlock* allocate_empty() {
         FlowControlBlock* fcb = allocate();
-        bzero(fcb->data + sizeof(FlowNodeData), data_size() - sizeof(FlowNodeData));
+        bzero(fcb->data, data_size());
         return fcb;
     }
 
