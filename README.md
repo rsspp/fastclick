@@ -6,7 +6,7 @@ RSS++ can load-balance either FastClick applications or any socket application b
 
 Load-balancing
 --------------
-The heart of RSS++ is the DeviceBalancer element. This element can load-balance NIC flow tables inside the kernel using ethtool, while counting entries with a BPF program. In that case, no packets flow through Click, which is used mainly as a library. We are looking on packaging to remove the need for Click in this case, stay tuned.
+The heart of RSS++ is the DeviceBalancer element (elements/userlevel/devicebalancer.cc).  This element can load-balance NIC flow tables inside the kernel using ethtool, while counting entries with a BPF program. In that case, no packets flow through Click, which is used mainly as a library. We are looking on packaging to remove the need for Click in this case, stay tuned.
 
 TODO : add example of kernel config
 
