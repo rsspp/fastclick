@@ -4,6 +4,16 @@ RSS++
 This repository is a modified version of FastClick that implements RSS++, a stateful intra-server load-balancer. RSS++ works by tweaking NICs' RSS indirection tables. To do so, RSS++ monitors the load of each RSS bucket and solves an optimization problem to re-assign RSS buckets to different CPU cores. Moreover, RSS++ proposes a state migration algorithm to avoid synchronization problems when rebalancing.
 RSS++ can load-balance either FastClick applications or any socket application by attaching to XDP using BPF code and ethtool to change the indirection table. This is *NOT* Click in Kernel mode.
 
+Building
+--------
+Note that if you only want to reproduce experiments, NPF can build RSS++ for you, so directly check the [experiments repo](https://github.com/rsspp/experiments) ;)
+
+One compiles RSS++ as FastClick, only with the 3 supplementary flags :
+```
+./configure --enable-multithread --disable-linuxmodule --enable-intel-cpu --enable-user-multithread --verbose CFLAGS="-g -O3" CXXFLAGS="-g -std=gnu++11 -O3" --disable-dynamic-linking --enable-poll --enable-bound-port-transfer --enable-dpdk --enable-batch --with-netmap=no --enable-zerocopy --disable-dpdk-pool --disable-dpdk-packet --enable-flow --disable-task-stats --enable-cpu-load
+```
+If you're only interested in Kernel mode (balancing your existing socket application), just remove all the "dpdk" stuffs in the line above (there are 3 options).
+
 Load-balancing
 --------------
 The heart of RSS++ is the DeviceBalancer element (elements/userlevel/devicebalancer.cc).  This element can load-balance NIC flow tables inside the kernel using ethtool, while counting entries with a BPF program. In that case, no packets flow through Click, which is used mainly as a library. We are looking on packaging to remove the need for Click in this case, stay tuned.
