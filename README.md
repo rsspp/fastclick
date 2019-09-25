@@ -49,9 +49,22 @@ xdp :: XDPLoader(PATH $BPF_XDP_COUNT, DEV $IF, CLEAN false)';
 ```
 
 RSS++ also works on top of Click and DPDK (could use also Netmap with a few modifications). In this case, RSS++ counts packets using an AggregateCounterMP element and changes the NIC indirection table directly through the DPDK API.
+
+An example of involved elements would be:
+```
+FromDPDKDevice(..., RSS_AGGREGATE 1)
+          -> agg :: AggregateCounterVector(MASK 511)
+          -> ...
+          -> ToDPDKDevice(...)
+    
+balancer :: DeviceBalancer(DEV fd0, METHOD pianorss, VERBOSE 0, TIMER 100, CPUS $CPU, TARGET 0.75, STARTCPU -1, LOAD 0.90, RSSCOUNTER agg, AUTOSCALE 1, CYCLES realcpu, RETA_SIZE $RETA_SIZE, IMBALANCE_THRESHOLD 0.02 );
+
+```
+Basically, we use AggregateCounterVector to count packets going through a given element instead of XDP.
+
 Given that DPDK supports applications running as secondary processes (i.e., those attached to a primary process), one could use RSS++ to tune a NIC's indirection table, while another application (e.g., mTCP) is spawned. In this case, one has to implement his/her own mechanisns for reporting packet counters.
 
-TODO : add important bits of user code.
+
 
 State migration
 ---------------
