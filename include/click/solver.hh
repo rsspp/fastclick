@@ -542,12 +542,22 @@ private:
     }
 };
 */
+
+
+
+/**
+ * Problem of moving all given buckets to a set of cores, ensuring load balancing.
+ *
+ * It is solved by simply pushing load of each bucket one by one to the core
+ * with the least load. We start with the most loaded buckets first.
+ * Not the most optimal solution, but we do not care as we will rebalance
+ * shortly.
+ */
 class BucketMapProblem
 { public:
     Vector<int> transfer; //existing core id for each buckets
     Vector<float> imbalance; //Imbalance for each existing cores (no holes)
     Vector<float> buckets_load; //Load for each bucket
-
 
     BucketMapProblem(int nbuckets, int ncpu) : min_cost(FLT_MAX) {
         transfer.resize(nbuckets);

@@ -504,13 +504,33 @@ class Load { public:
     unsigned nbuckets_nz;
 };
 
+struct MachineLoad {
+    MachineLoad() : N(0), total_load(0), target(0) {
+
+    }
+    int N;
+    float total_load;
+    float target;
+};
+
+struct SocketLoad : MachineLoad {
+    SocketLoad() : imbalance(),uid(),oid() {
+    }
+
+    Vector<float> imbalance;
+    Vector<int> uid;
+    Vector<int> oid;
+};
+
+#define print_cpu_assign() {for (int i = 0; i < rload.size(); i++) {click_chatter("CPU %d -> %d/%d",i, rload[i].first,load[i].cpu_phys_id);}}
+
 void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     click_jiffies_t now = click_jiffies();
 #ifdef HAVE_BPF
     if (_counter_is_xdp) {
-    click_chatter("Reading XDP table");
-    int cpus = balancer->_max_cpus;
-    unsigned int nr_cpus = bpf_num_possible_cpus();
+        click_chatter("Reading XDP table");
+        int cpus = balancer->_max_cpus;
+        unsigned int nr_cpus = bpf_num_possible_cpus();
         uint64_t values[nr_cpus];
         for (uint32_t key = 0; key < _count.size(); key++) {
             if (bpf_map_lookup_elem(_xdp_table_fd, &key, values)) {
@@ -535,18 +555,12 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
         }
     }
 #endif
-//    return;
 
 #define get_node_count(i) ((_counter_is_xdp)?_count.unchecked_at(i).count:((AggregateCounterVector*)_counter)->find_node_nocheck(i).count)
 #define get_node_variance(i) ((_counter_is_xdp)?_count.unchecked_at(i).variance:((AggregateCounterVector*)_counter)->find_node_nocheck(i).variance)
 #define get_node_moved(i) (_count.unchecked_at(i).moved)
 
-/*
-    uint64_t total_packets = 0;
-    for (int i = 0; i < _table.size(); i++) {
-    total_packets += _counter->find_node(i)->count;
-    }
-*/
+
     Timestamp begin = Timestamp::now_steady();
     float _min_load = 0.01;
     float _threshold_force_overload = 0.90;
@@ -554,54 +568,47 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     //float _high_load_threshold = 0.;
     const float _imbalance_threshold = _threshold / 2;
     assert(_imbalance_threshold <= (_threshold / 2) + EPSILON); //Or we'll always miss
-    //Vector<float> corrections;
-    //corrections.resize(click_max_cpu_ids(), 0);
 
-    struct MachineLoad {
-        MachineLoad() : N(0), total_load(0), target(0) {
-
-        }
-        int N;
-        float total_load;
-        float target;
-    };
-    struct SocketLoad : MachineLoad {
-        SocketLoad() : imbalance(),uid(),oid() {
-
-        }
-
-        Vector<float> imbalance;
-        Vector<int> uid;
-        Vector<int> oid;
-    };
-
+    //Various flags
     float suppload = 0;
-    //Problem p;
     int min_core = -1;
     float min_core_load = 1;
     float max_core_load = 0;
     bool has_high_load = false;
+
+    //Per-core load statistic
     Vector<Load> load(rload.size(),Load());
+
+    //Track physical CPU id to assigned ids
     Vector<unsigned> map_phys_to_id(click_max_cpu_ids(), -1);
+
+    //Per NUMA-socket load. When do_numa is false, we consider a single NUMA node
     Vector<SocketLoad> sockets_load;
     bool do_numa = _numa;
     int numamax = do_numa?_numa_num:1;
     sockets_load.resize(numamax);
 
+    //Keeps track of the whole machine load stats
     MachineLoad machine_load;
 
+    //For each assigned cores, we compute the load and its smothed average
+    //We check if some cores are completely overloaded, and report all that per-NUMA socket
     for (int j = 0; j < rload.size(); j++) {
-        int cpuid = rload[j].first;
+        int physcpuid = rload[j].first;
         float load_current = rload[j].second;
         //assert(load_current <= 1);
         if (load_current < min_core_load)
             min_core = j;
-        load[j].cpu_phys_id = cpuid;
-        if (_past_load[cpuid] == 0)
+
+        load[j].cpu_phys_id = physcpuid;
+
+        if (_past_load[physcpuid] == 0)
             load[j].load = load_current;
         else
-            load[j].load = load_current * _load_alpha + _past_load[cpuid] * (1.0-_load_alpha);
-        _past_load[cpuid] = load[j].load;
+            load[j].load = load_current * _load_alpha + _past_load[physcpuid] * (1.0-_load_alpha);
+
+        _past_load[physcpuid] = load[j].load;
+
         float diff = _target_load - load[j].load; // >0 if underloaded diff->quantity to add
         suppload += diff;
         if (abs(diff) <= _threshold)
@@ -613,12 +620,9 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
         if (load[j].load > max_core_load) {
             max_core_load = load[j].load;
         }
-        map_phys_to_id[load[j].cpu_phys_id] = j;
+        map_phys_to_id[physcpuid] = j;
 
-        //corrections[cpuid] = diff;
-        //suppload += diff;
         machine_load.total_load += load[j].load;
-
 
         if (do_numa) {
             int numaid =  Numa::get_numa_node_of_cpu(load[j].cpu_phys_id);
@@ -626,6 +630,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
             sockets_load[numaid].total_load += load[j].load;
         }
     }
+
 
     machine_load.N = load.size();
     machine_load.target = machine_load.total_load / (float)machine_load.N;
@@ -648,8 +653,21 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     //Count the number of packets for each core
     for (int j = 0; j < _table.size(); j++) {
         unsigned long long c = get_node_count(j);
-        load[map_phys_to_id[_table[j]]].npackets += c;
-        load[map_phys_to_id[_table[j]]].nbuckets += 1;
+        unsigned cpu_phys_id =_table[j];
+        if (unlikely(cpu_phys_id >= map_phys_to_id.size())) {
+            click_chatter("ERROR : invalid phys id %d", cpu_phys_id);
+            print_cpu_assign();
+            abort();
+        }
+        unsigned cpuid = map_phys_to_id.unchecked_at(cpu_phys_id);
+        if (unlikely(cpuid >= load.size())) {
+            click_chatter("ERROR : invalid cpu id %d for physical id %d, table index %d", cpuid, cpu_phys_id, j);
+            print_cpu_assign();
+            abort();
+        }
+        auto &l = load.unchecked_at(cpuid);
+        l.npackets += c;
+        l.nbuckets += 1;
         if (c > 0)
             load[map_phys_to_id[_table[j]]].nbuckets_nz += 1;
     }
@@ -666,13 +684,13 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
                 click_chatter("Removing a core (target %f)",_target_load);
             }
 
-            click_chatter("Removing core %d", min_core);
             int min_core_phys = load[min_core].cpu_phys_id;
+
+            click_chatter("Removing core %d (phys %d)", min_core, min_core_phys);
             unsigned long long totcount = load[min_core].npackets;
             load[min_core] = load[load.size() - 1];
             load.pop_back();
             balancer->removeCore(min_core_phys);
-
 
             //Count the number of packets for this core
             Vector<int> buckets_indexes;
@@ -685,14 +703,13 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
                 click_chatter("Removing %d buckets of core %d", buckets_indexes.size(), min_core);
 
 
-            BucketMapProblem cp(buckets_indexes.size(), load.size());
+            BucketMapProblem cp(buckets_indexes.size(), load.size()); //load.size() is already fixed
 
             //Compute load for each buckets
             for (int i = 0; i < buckets_indexes.size(); i++) {
                 int j = buckets_indexes[i];
                 double c = get_node_count(j);
                 cp.buckets_load[i] = (((double) c / (double)totcount)*min_core_load);
-                //click_chatter("Bucket %d (%d) load %f", i ,j, cp.buckets_load[i]);
             }
 
             //Add imbalance of all cores
@@ -703,20 +720,23 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
             //Fix imbalance without the removed core
             for (int i = 0; i < machine_load.N; i++) {
                 //Imbalance is positive if the core should loose some load
-        imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (machine_load.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].second) / 2.0f);
+                imbalance[i] = 0 * (1.0-_imbalance_alpha) + ( (machine_load.target - load[i].load) * _imbalance_alpha); //(_last_imbalance[load[i].first] / 2) + ((p.target - load[i].second) / 2.0f);
             }
-            //cimbalance = imbalance;
 
             click_chatter("Solving problem...");
+
             //Solve problem ; map all buckets of removed core to other cores
             cp.solve();
 
-            //assert(false); //unfinished
-
             for (int i = 0; i < buckets_indexes.size(); i++) {
-                int j = buckets_indexes[i];
-                _table[j] = cp.transfer[i];
-            //    click_chatter("Bucket %d (%d) -> core %d", i ,j, cp.transfer[i]);
+                unsigned j = buckets_indexes[i];
+                unsigned raw_id = cp.transfer[i];
+                //assert(raw_id != -1);
+                unsigned cpu_phys_id = load[raw_id].cpu_phys_id;
+                _table[j] = cpu_phys_id;
+                //assert(cpu_phys_id != -1);
+                //assert(cpu_phys_id != min_core_phys);
+                //click_chatter("Bucket %d (%d) -> new id %d phys core %d", i ,j, raw_id, cpu_phys_id);
             }
 
             Timestamp t = Timestamp::now_steady();
@@ -741,19 +761,19 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
                 load.push_back(Load(a_phys_id));
                 map_phys_to_id[a_phys_id] = aid;
                 if (do_numa) {
-            //We disable numa in any case, to allow inter-numa shuffling
-            //int numaid =  Numa::get_numa_node_of_cpu(a_phys_id);
-                //sockets_load[numaid].N++;
-                //sockets_load[numaid].target = sockets_load[numaid].total_load / (float)sockets_load[numaid].N;;
-                ////sockets_load[numaid].imbalance.resize(sockets_load[numaid].imbalance.size() + 1);
-                do_numa = false;
+                    //We disable numa in any case, to allow inter-numa shuffling when we add a core
+                    //int numaid =  Numa::get_numa_node_of_cpu(a_phys_id);
+                    //sockets_load[numaid].N++;
+                    //sockets_load[numaid].target = sockets_load[numaid].total_load / (float)sockets_load[numaid].N;;
+                    ////sockets_load[numaid].imbalance.resize(sockets_load[numaid].imbalance.size() + 1);
+                    do_numa = false;
                 }
             }
         }
     } else {
         if (machine_load.target <  _min_load && !_threshold_force_overload) {
             click_chatter("Underloaded, skipping balancing");
-    }
+        }
     }
 
     //We need to fix the first numa socket if numa awareness has been disabled
@@ -852,8 +872,7 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
                 click_chatter("Underloaded %d is cpu %d, imb %f, buckets %d",socket.uid.size(),i, imbalance[i],load[i].nbuckets_nz);
             socket.uid.push_back(i);
             nunderloaded++;
-        }
-        else if (imbalance[i] < - _threshold) {
+        } else if (imbalance[i] < - _threshold) {
             if (load[i].nbuckets_nz == 0) {
                 click_chatter("WARNING : A core is overloaded but has no buckets !");
             } else if (load[i].nbuckets_nz > 1) { //Else there is nothing we can do
@@ -1154,8 +1173,6 @@ reagain:
 #endif
     total_imbalance = 0;
 
-
-
     if (moved) {
         for (int nid = 0; nid < numamax; nid++) {
             SocketLoad &socket = sockets_load[nid];
@@ -1390,7 +1407,7 @@ int MethodPianoRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
             _counter = (XDPLoader*)e->cast("XDPLoader");
 #endif
             if (!_counter) {
-                return errh->error("Counter must be of the type AggregateCounterVector or XDPLoader");
+                return errh->error("COUNTER must be of the type AggregateCounterVector or XDPLoader");
             }
             _counter_is_xdp = true;
         } else {
@@ -1707,7 +1724,7 @@ DeviceBalancer::run_timer(Timer* t) {
     _method->rebalance(load);
     if (_active)
         _timer.schedule_after_msec(_current_tick);
-}
+} //end of balancing timer
 
 DeviceBalancer::CpuInfo
 DeviceBalancer::make_info(int _id) {

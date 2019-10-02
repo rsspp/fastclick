@@ -44,7 +44,7 @@ int  xdp_count_program(struct xdp_md *ctx)
 	bpf_debug("Reached L3: L3off:%llu proto:0x%x\n", l3_offset, eth_proto);
 
 	action = handle_eth_protocol(ctx, eth_proto, l3_offset);*/
-    __u32 id = ctx->hash % 128;
+    __u32 id = ctx->hash % 128; //TODO : change according to the current number of queue. But the map size would need to be changed too. Therefore it would be more practical to simply recompile this file with a different parameter.
 /*    if (id % 16 != bpf_get_smp_processor_id()) {
 	    bpf_debug("Received idx %u on core %d instead of %d\n", ctx->hash, bpf_get_smp_processor_id(), id % 16 );
         bpf_debug("queue %d", ctx->rx_queue_index);
