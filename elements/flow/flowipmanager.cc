@@ -221,20 +221,23 @@ void FlowIPManager::push_batch(int, PacketBatch* batch) {
 
 				if (unlikely(_verbose > 0))
 					click_chatter("Packet of group %d pushed on core %d while %d still holds the lock", groupid, click_current_cpu_id(), _tables[groupid].owner);
-				/*
+
 				if (_tables[groupid].queue) {
 					_tables[groupid].queue->prev()->set_next(p);
 				} else {
 					_tables[groupid].queue = p;
 				}
 				_tables[groupid].queue->set_prev(p);
-				p->set_next(0);*/
+				p->set_next(0);
+
 			} else {
 				flush_queue(groupid, b);
+
+		        process(groupid, p, b);
 			}
-		}
+		} else
+		    process(groupid, p, b);
 		last = groupid;
-		process(groupid, p, b);
 	}
 
 	batch = b.finish();
