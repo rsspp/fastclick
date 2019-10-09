@@ -1784,7 +1784,10 @@ DeviceBalancer::read_param(Element *e, void *thunk)
                 count += v[0].count;
                 time += v[0].time;
             }
-            return String(time/count);
+            if (count > 0) {
+                return String(time/count);
+            } else
+                return "nan";
       }
     default:
         return String();
