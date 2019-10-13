@@ -872,7 +872,7 @@ Router::set_flow_code_override(int eindex, const String &flow_code)
     _flow_code_override.push_back(flow_code);
 }
 
-/** @brief Traverse the router configuration from one of @a e's ports.
+/** @brief Traverse the router configuration from one of @a e's ports, maximum once per port.
  * @param e element to start search
  * @param forward true to search down from outputs, false to search up from
  *   inputs
