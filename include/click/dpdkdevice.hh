@@ -39,6 +39,11 @@
 #include <click/timer.hh>
 #include <click/ethernetdevice.hh>
 
+#if RTE_VERSION < RTE_VERSION_NUM(19,8,0,0)
+#define rte_ipv4_hdr ipv4_hdr
+#define rte_ether_addr ether_addr
+#endif
+
 /**
  * Unified type for DPDK port IDs.
  * Until DPDK v17.05 was uint8_t
@@ -268,7 +273,7 @@ public:
     inline int nb_tx_queues();
     inline int nb_vf_pools();
 
-    struct ether_addr gen_mac(int a, int b);
+    struct rte_ether_addr gen_mac(int a, int b);
 
     /*
     * TXInternalQueue is a ring of DPDK buffers pointers (rte_mbuf *) awaiting

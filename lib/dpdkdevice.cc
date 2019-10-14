@@ -494,14 +494,14 @@ String DPDKDevice::get_mode_str() {
     return get_info().mq_mode_str;
 }
 
-static struct ether_addr pool_addr_template = {
+static struct rte_ether_addr pool_addr_template = {
         .addr_bytes = {0x52, 0x54, 0x00, 0x00, 0x00, 0x00}
 };
 
-struct ether_addr DPDKDevice::gen_mac( int a, int b) {
-    struct ether_addr mac;
+struct rte_ether_addr DPDKDevice::gen_mac( int a, int b) {
+    struct rte_ether_addr mac;
      if (info.init_mac != EtherAddress()) {
-         memcpy(&mac,info.init_mac.data(),sizeof(struct ether_addr));
+         memcpy(&mac,info.init_mac.data(),sizeof(struct rte_ether_addr));
      } else
          mac = pool_addr_template;
     mac.addr_bytes[4] = a;
@@ -787,13 +787,8 @@ also                ETH_TXQ_FLAGS_NOMULTMEMP
         rte_eth_promiscuous_enable(port_id);
 
     if (info.init_mac != EtherAddress()) {
-    #if RTE_VERSION >= RTE_VERSION_NUM(19,8,0,0)
         struct rte_ether_addr addr;
-        memcpy(&addr, info.init_mac.data(), sizeof(struct rte_ether_addr));
-    #else
-        struct ether_addr addr;
-        memcpy(&addr, info.init_mac.data(), sizeof(struct ether_addr));
-    #endif
+        memcpy(&addr,info.init_mac.data(),sizeof(struct rte_ether_addr));
         if (rte_eth_dev_default_mac_addr_set(port_id, &addr) != 0) {
             return errh->error("Could not set default MAC address");
         }
@@ -826,7 +821,7 @@ also                ETH_TXQ_FLAGS_NOMULTMEMP
          * Set mac for each pool and parameters
          */
         for (unsigned q = 0; q < info.num_pools; q++) {
-                struct ether_addr mac;
+                struct rte_ether_addr mac;
                 mac = gen_mac(port_id, q);
                 printf("Port %u vmdq pool %u set mac %02x:%02x:%02x:%02x:%02x:%02x\n",
                         port_id, q,
@@ -916,12 +911,8 @@ void DPDKDevice::set_init_isolate(bool isolate) {
 
 EtherAddress DPDKDevice::get_mac() {
     assert(_is_initialized);
-#if RTE_VERSION >= RTE_VERSION_NUM(19,8,0,0)
     struct rte_ether_addr addr;
-#else
-    struct ether_addr addr;
-#endif
-    rte_eth_macaddr_get(port_id, &addr);
+    rte_eth_macaddr_get(port_id,&addr);
     return EtherAddress((unsigned char*)&addr);
 }
 

@@ -333,7 +333,7 @@ inline void TCPElement::resetTCPChecksum(WritablePacket *packet)
     mbuf->l3_len = packet->network_header_length();
     mbuf->l4_len = tcph->th_off << 2;
         mbuf->ol_flags |= PKT_TX_TCP_CKSUM | PKT_TX_IP_CKSUM | PKT_TX_IPV4;
-    tcph->th_sum = rte_ipv4_phdr_cksum((struct ipv4_hdr *)iph, mbuf->ol_flags);
+    tcph->th_sum = rte_ipv4_phdr_cksum((struct rte_ipv4_hdr *)iph, mbuf->ol_flags);
 #endif
 }
 
