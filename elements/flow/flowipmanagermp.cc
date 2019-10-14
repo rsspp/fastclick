@@ -33,6 +33,10 @@ FlowIPManagerMP::configure(Vector<String> &conf, ErrorHandler *errh)
             .complete() < 0)
         return -1;
 
+    find_children(_verbose);
+
+    router()->get_root_init_future()->postOnce(&_fcb_builded_init_future);
+    _fcb_builded_init_future.post(this);
 
     return 0;
 }
@@ -55,7 +59,7 @@ ipv4_hash_crc(const void *data,  uint32_t data_len,
 	return init_val;
 }
 
-int FlowIPManagerMP::initialize(ErrorHandler *errh) {
+int FlowIPManagerMP::solve_initialize(ErrorHandler *errh) {
 	struct rte_hash_parameters hash_params = {0};
 	char buf[32];
 	hash_params.name = buf;

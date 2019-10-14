@@ -20,25 +20,29 @@ FlowIPManagerHMP::~FlowIPManagerHMP() {
 
 }
 
-/*
 int
 FlowIPManagerHMP::configure(Vector<String> &conf, ErrorHandler *errh)
 {
-
     if (Args(conf, this, errh)
     		.read_or_set_p("CAPACITY", _table_size, 65536)
-            .read_or_set("RESERVE",_reserve, 0)
+            .read_or_set("RESERVE", _reserve, 0)
+            .read_or_set("VERBOSE", _verbose, 0)
             .complete() < 0)
         return -1;
 
+    find_children(_verbose);
+
+    router()->get_root_init_future()->postOnce(&_fcb_builded_init_future);
+    _fcb_builded_init_future.post(this);
 
     return 0;
-}*/
-
-
+}
 
 int FlowIPManagerHMP::initialize(ErrorHandler *errh) {
+    return 0;
+}
 
+int FlowIPManagerHMP::solve_initialize(ErrorHandler *errh) {
 	_flow_state_size_full = sizeof(FlowControlBlock) + _reserve;
 
 	_hash.resize_clear(_table_size);
@@ -47,8 +51,6 @@ int FlowIPManagerHMP::initialize(ErrorHandler *errh) {
 	CLICK_ASSERT_ALIGNED(fcbs);
 	if (!fcbs)
 		return errh->error("Could not init data table !");
-
-
 
     return 0;
 }

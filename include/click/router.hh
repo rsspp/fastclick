@@ -5,6 +5,8 @@
 #include <click/timer.hh>
 #include <click/sync.hh>
 #include <click/task.hh>
+#include <click/vector.hh>
+#include <click/pair.hh>
 #include <click/standard/threadsched.hh>
 #if CLICK_NS
 # include <click/simclick.h>
@@ -57,7 +59,12 @@ class Router { public:
     Element* find(const String& name, String context, ErrorHandler* errh = 0) const;
     Element* find(const String& name, const Element* context, ErrorHandler* errh = 0) const;
 
-    int visit(Element *e, bool isoutput, int port, RouterVisitor *visitor) const;
+    bool element_can_reach(Element* a, Element* b);
+    int visit(Element *e, bool isoutput, int port, RouterVisitor *visitor, bool all_paths = false) const;
+    int visit_ports(Element *e, bool isoutput, int port, RouterVisitor *visitor) const;
+    int visit_paths(Element *e, bool isoutput, int port, RouterVisitor *visitor) const {
+        return visit(e, isoutput, port, visitor, true);
+    }
     int visit_downstream(Element *e, int port, RouterVisitor *visitor) const;
     int visit_upstream(Element *e, int port, RouterVisitor *visitor) const;
 
@@ -134,6 +141,24 @@ class Router { public:
 
     inline Router* hotswap_router() const;
     void set_hotswap_router(Router* router);
+
+
+    class InitFuture { public:
+        InitFuture() : _children() {
+
+        }
+        virtual int solve_initialize(ErrorHandler* errh);
+
+        void postOnce(InitFuture* future);
+        virtual void post(InitFuture* future);
+    protected:
+        Vector<InitFuture*> _children;
+    };
+    InitFuture _root_init_future;
+
+    InitFuture* get_root_init_future() {
+        return &_root_init_future;
+    }
 
     int initialize(ErrorHandler* errh);
     void activate(bool foreground, ErrorHandler* errh);

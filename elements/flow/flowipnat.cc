@@ -27,7 +27,6 @@ FlowIPNAT::configure(Vector<String> &conf, ErrorHandler *errh)
                .read_mp("SIP",_sip)
                .read("ACCEPT_NONSYN", _accept_nonsyn)
                .read("STATE", _own_state)
-			   .read_mp("FCB_OFFSET",_flow_data_offset)
                .complete() < 0)
         return -1;
 

@@ -19,7 +19,7 @@
 CLICK_DECLS
 
 
-class FlowIPManagerHMP: public FlowIPManagerMP {
+class FlowIPManagerHMP: public VirtualFlowManager, Router::InitFuture {
 public:
 
 
@@ -31,8 +31,9 @@ public:
     const char *port_count() const		{ return "1/1"; }
 
 
-    //int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
+    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     int initialize(ErrorHandler *errh) override CLICK_COLD;
+    int solve_initialize(ErrorHandler *errh) override CLICK_COLD;
     void cleanup(CleanupStage stage) override CLICK_COLD;
 
     //First : group id, second : destination cpu
@@ -51,6 +52,12 @@ private:
     atomic_uint32_t _current;
 
     inline void process(Packet* p, BatchBuilder& b);
+
+    FlowControlBlock *fcbs;
+
+    int _table_size;
+    int _flow_state_size_full;
+    int _verbose;
 
 };
 

@@ -8,6 +8,8 @@
 #include <click/batchelement.hh>
 #include <click/pair.hh>
 #include <click/flow/common.hh>
+#include <click/flow/flowelement.hh>
+
 
 
 CLICK_DECLS
@@ -58,7 +60,7 @@ struct BatchBuilder {
  * neither set the offsets for placement in the FCB automatically. Look at
  * the middleclick branch for alternatives.
  */
-class FlowIPManager: public BatchElement {
+class FlowIPManager: public VirtualFlowManager, Router::InitFuture {
 public:
 
     FlowIPManager() CLICK_COLD;
@@ -70,8 +72,8 @@ public:
     const char *processing() const		{ return PUSH; }
     int configure_phase() const     { return CONFIGURE_PHASE_PRIVILEGED + 1; }
 
-    int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
-    int initialize(ErrorHandler *errh) CLICK_COLD;
+    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
+    int solve_initialize(ErrorHandler *errh) override CLICK_COLD;
     void cleanup(CleanupStage stage) CLICK_COLD;
 
     //First : group id, second : destination cpu
@@ -107,7 +109,6 @@ private:
 
 
     int _groups;
-    int _reserve;
     int _table_size;
     int _flow_state_size_full;
     int _verbose;

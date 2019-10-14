@@ -37,6 +37,12 @@ FlowIPManager::configure(Vector<String> &conf, ErrorHandler *errh)
             .complete() < 0)
         return -1;
 
+
+    find_children(_verbose);
+
+    router()->get_root_init_future()->postOnce(&_fcb_builded_init_future);
+    _fcb_builded_init_future.post(this);
+
     return 0;
 }
 
@@ -57,41 +63,38 @@ ipv4_hash_crc(const void *data, __rte_unused uint32_t data_len,
         return init_val;
 }
 
-int FlowIPManager::initialize(ErrorHandler *errh) {
-	struct rte_hash_parameters hash_params = {0};
-	char buf[32];
-	hash_params.name = buf;
-	hash_params.entries = _table_size;
-	hash_params.key_len = sizeof(IPFlow5ID);
-	hash_params.hash_func = ipv4_hash_crc;
-	hash_params.hash_func_init_val = 0;
-	hash_params.extra_flag = 0; //RTE_HASH_EXTRA_FLAGS_MULTI_WRITER_ADD | RTE_HASH_EXTRA_FLAGS_RW_CONCURRENCY; //| RTE_HASH_EXTRA_FLAGS_RW_CONCURRENCY_LF
-
-	_flow_state_size_full = sizeof(FlowControlBlock) + _reserve;
-
-	_tables = CLICK_ALIGNED_NEW(gtable,_groups);
-	CLICK_ASSERT_ALIGNED(_tables);
-
-	for (int i = 0; i < _groups; i++) {
-		sprintf(buf, "flowipmanager%d", i);
-		_tables[i].hash = rte_hash_create(&hash_params);
-	    if (!_tables[i].hash)
-	    	return errh->error("Could not init flow table %d!", i);
-
-	    _tables[i].fcbs =  (FlowControlBlock*)CLICK_ALIGNED_ALLOC(_flow_state_size_full * _table_size);
-        bzero(_tables[i].fcbs,_flow_state_size_full * _table_size);
-	    CLICK_ASSERT_ALIGNED(_tables[i].fcbs);
-	    if (!_tables[i].fcbs)
-	    	return errh->error("Could not init data table %d!", i);
-        if (_def_thread > 0)
-            _tables[i].owner = i % _def_thread;
+int FlowIPManager::solve_initialize(ErrorHandler *errh) {
+        struct rte_hash_parameters hash_params = {0};
+        char buf[32];
+        hash_params.name = buf;
+        hash_params.entries = _table_size;
+        hash_params.key_len = sizeof(IPFlow5ID);
+        hash_params.hash_func = ipv4_hash_crc;
+        hash_params.hash_func_init_val = 0;
+        hash_params.extra_flag = 0; //RTE_HASH_EXTRA_FLAGS_MULTI_WRITER_ADD | RTE_HASH_EXTRA_FLAGS_RW_CONCURRENCY; //| RTE_HASH_EXTRA_FLAGS_RW_CONCURRENCY_LF
 
 
-    }
+        _flow_state_size_full = sizeof(FlowControlBlock) + _reserve;
+
+        _tables = CLICK_ALIGNED_NEW(gtable,_groups);
+        CLICK_ASSERT_ALIGNED(_tables);
+
+        for (int i = 0; i < _groups; i++) {
+            sprintf(buf, "flowipmanager%d", i);
+            _tables[i].hash = rte_hash_create(&hash_params);
+            if (!_tables[i].hash)
+                return errh->error("Could not init flow table %d!", i);
+
+            _tables[i].fcbs =  (FlowControlBlock*)CLICK_ALIGNED_ALLOC(_flow_state_size_full * _table_size);
+            bzero(_tables[i].fcbs,_flow_state_size_full * _table_size);
+            CLICK_ASSERT_ALIGNED(_tables[i].fcbs);
+            if (!_tables[i].fcbs)
+                return errh->error("Could not init data table %d!", i);
+            if (_def_thread > 0)
+                _tables[i].owner = i % _def_thread;
 
 
-
-    return 0;
+        }
 }
 
 void FlowIPManager::cleanup(CleanupStage stage) {
