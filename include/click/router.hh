@@ -150,6 +150,8 @@ class Router { public:
         virtual int solve_initialize(ErrorHandler* errh);
 
         void postOnce(InitFuture* future);
+
+        void post(std::function<int(void)>);
         virtual void post(InitFuture* future);
     protected:
         Vector<InitFuture*> _children;

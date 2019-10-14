@@ -384,7 +384,10 @@ int BalanceMethodRSS::initialize(ErrorHandler *errh, int startwith) {
     }
 
     if (balancer->_manager) {
-        balancer->_manager->init_assignment(_table);
+        balancer->_manager->post([this](){
+                balancer->_manager->init_assignment(_table);
+                return 0;
+        });
     }
     return err;
 }

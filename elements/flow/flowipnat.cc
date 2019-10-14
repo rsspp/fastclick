@@ -192,7 +192,6 @@ FlowIPNATReverse::configure(Vector<String> &conf, ErrorHandler *errh)
     Element* e;
     if (Args(conf, this, errh)
                 .read_mp("NAT",e)
-				.read("FCB_OFFSET",_flow_data_offset)
                 .complete() < 0)
         return -1;
     _in = reinterpret_cast<FlowIPNAT*>(e);

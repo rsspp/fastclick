@@ -2,7 +2,7 @@
  * TestFlowSpace.{cc,hh}
  */
 
-#include "TestFlowSpace.hh"
+#include "testflowspace.hh"
 
 #include <click/config.h>
 #include <click/glue.hh>

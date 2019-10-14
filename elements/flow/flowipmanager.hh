@@ -60,7 +60,7 @@ struct BatchBuilder {
  * neither set the offsets for placement in the FCB automatically. Look at
  * the middleclick branch for alternatives.
  */
-class FlowIPManager: public VirtualFlowManager, Router::InitFuture {
+class FlowIPManager: public VirtualFlowManager, public Router::InitFuture {
 public:
 
     FlowIPManager() CLICK_COLD;

@@ -27,7 +27,6 @@ FlowRandLoad::configure(Vector<String> &conf, ErrorHandler *errh)
     if (Args(conf, this, errh)
                .read_or_set("MIN", _min, 1)
                .read_or_set("MAX", _max, 100)
-			   .read_mp("FCB_OFFSET",_flow_data_offset)
                .complete() < 0)
         return -1;
 
