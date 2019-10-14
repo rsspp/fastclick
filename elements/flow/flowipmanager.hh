@@ -102,7 +102,7 @@ private:
     	volatile int owner;
     	Packet* queue;
     	rte_hash* hash;
-    	FlowControlBlock *fcbs;
+        FlowControlBlock *fcbs;
     } CLICK_ALIGNED(CLICK_CACHE_LINE_SIZE);
 
 

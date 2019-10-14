@@ -16,7 +16,7 @@
 
 CLICK_DECLS
 
-FlowIPManager::FlowIPManager() : _verbose(1) {
+FlowIPManager::FlowIPManager() : _verbose(1), _tables(0), _groups(0) {
 
 }
 
@@ -58,6 +58,7 @@ ipv4_hash_crc(const void *data, __rte_unused uint32_t data_len,
 }
 
 int FlowIPManager::initialize(ErrorHandler *errh) {
+
 	struct rte_hash_parameters hash_params = {0};
 	char buf[32];
 	hash_params.name = buf;
@@ -89,7 +90,7 @@ int FlowIPManager::initialize(ErrorHandler *errh) {
 
     }
 
-
+    click_chatter("%p{element} initialized with %d groups", this, _groups);
 
     return 0;
 }
@@ -175,7 +176,12 @@ inline void FlowIPManager::flush_queue(int groupid, BatchBuilder &b) {
 }
 
 void FlowIPManager::init_assignment(Vector<unsigned> table) {
-	click_chatter("Initializing flow table assignment");
+	click_chatter("Initializing flow table assignment with %d buckets");
+    assert(_tables && _groups);
+    if (table.size() != _groups) {
+        click_chatter("ERROR: Initializing %p{element} with %d buckets, but configured with %d buckets", this, table.size(), _groups);
+        abort();
+    }
 	for (int i = 0; i < table.size(); i++) {
 		_tables[i].owner = table[i];
 	}
