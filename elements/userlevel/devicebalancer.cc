@@ -1866,5 +1866,5 @@ DeviceBalancer::add_handlers()
 
 
 CLICK_ENDDECLS
-
+ELEMENT_REQUIRES(load)
 EXPORT_ELEMENT(DeviceBalancer)

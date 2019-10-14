@@ -2346,6 +2346,11 @@ if test "x$enable_ip6" = xyes; then
     provisions="$provisions ip6"
 fi
 
+dnl add 'load' if compiling with cpu-load
+if test "x$enable_cpu_load" = xyes; then
+    provisions="$provisions load"
+fi
+
 dnl add 'linux' if compiling under linux
 if test "x$ac_cv_under_linux" = xyes; then
     provisions="$provisions linux"
@@ -2482,11 +2487,18 @@ Configuration Summary:
     PCAP support:                ${have_pcap}
 
     Metron support:              ${have_metron}
+    RSS++ support:               ${enable_cpu_load}
 
     PAPI support:                ${have_papi}
     RE2 support:                 ${have_re2}
     BPF support:                 ${have_libbpf}
 "
+
+if test "$enable_cpu_load" != no; then
+    echo ""
+    echo "You need to enable --enable-cpu-load to have RSS++"
+    echo ""
+fi
 
 if test "$feedback" != no; then
     echo ""
