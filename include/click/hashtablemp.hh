@@ -281,6 +281,7 @@ class HashContainerMP { public:
             _table.read_end();
         return s;
     }
+
     /** @brief Return true iff size() == 0. */
     inline bool empty() {
         return size() == 0;

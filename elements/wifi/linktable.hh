@@ -20,7 +20,6 @@ CLICK_DECLS
  * =a ARPTable
  *
  */
-
 class LinkTable: public Element{
 public:
 
