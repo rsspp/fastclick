@@ -186,6 +186,7 @@ void FlowIPManager::init_assignment(Vector<unsigned> table) {
         abort();
     }
 	for (int i = 0; i < table.size(); i++) {
+        assert(table[i] < 64);
 		_tables[i].owner = table[i];
 	}
 
