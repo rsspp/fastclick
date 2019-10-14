@@ -162,7 +162,8 @@ public:
     const char *class_name() const { return "DeviceBalancer"; }
     const char *port_count() const { return "0/0"; }
     const char *processing() const { return AGNOSTIC; }
- //   const int configure_phase() override { }
+
+//    int configure_phase() const     { return CONFIGURE_PHASE_PRIVILEGED; }
 
     bool can_live_reconfigure() const { return false; }
 
