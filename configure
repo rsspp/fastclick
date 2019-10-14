@@ -16068,7 +16068,7 @@ Configuration Summary:
     BPF support:                 ${have_libbpf}
 "
 
-if test "$enable_cpu_load" != no; then
+if test "x$enable_cpu_load" != "xyes"; then
     echo ""
     echo "You need to enable --enable-cpu-load to have RSS++"
     echo ""
