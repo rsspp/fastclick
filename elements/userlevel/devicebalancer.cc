@@ -1009,6 +1009,8 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
     }
 
 #else
+
+        //OLD VERSION, STOP LOOKING
         if (!(socket.oid.size() > 0 && socket.uid.size() > 0))
         //Set problem parameters
         float min_cost = socket.N * socket.N;
@@ -1421,7 +1423,7 @@ int MethodPianoRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
 
 
 
-DeviceBalancer::DeviceBalancer() : _timer(this), _verbose(false) {
+DeviceBalancer::DeviceBalancer() : _timer(this), _verbose(false), _manager(0) {
 }
 
 DeviceBalancer::~DeviceBalancer() {
@@ -1519,7 +1521,9 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
     }
 
     if (manager) {
-    _manager = dynamic_cast<FlowIPManager*>(manager);
+        _manager = dynamic_cast<FlowIPManager*>(manager);
+        if (!_manager)
+            return errh->error("The flow manager is not of type FlowIPManager");
     }
 
     if (target=="load")
