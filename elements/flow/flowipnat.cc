@@ -12,7 +12,7 @@
 
 CLICK_DECLS
 
-FlowIPNAT::FlowIPNAT() : _sip(), _map(65536), _accept_nonsyn(true) {
+FlowIPNAT::FlowIPNAT() : _sip(), _map(65536), _accept_nonsyn(true), _own_state(false) {
 
 };
 
