@@ -36,7 +36,7 @@ Packet *
 StripTransportHeader::simple_action(Packet *p)
 {
     unsigned l = p->transport_header_offset();
-    l += transport_header_length(p);
+    l += transport_header_length(this, p);
     p->pull(l);
     return p;
 }

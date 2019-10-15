@@ -38,7 +38,7 @@ class StripTransportHeader : public BatchElement { public:
     PacketBatch *simple_action_batch(PacketBatch *batch);
 #endif
 
-    static inline unsigned transport_header_length(Packet* p) {
+    static inline unsigned transport_header_length(Element* e, Packet* p) {
         unsigned l = 0;
         if (p->ip_header()->ip_p == IP_PROTO_TCP) {
             const click_tcp* th = p->tcp_header();
@@ -48,7 +48,7 @@ class StripTransportHeader : public BatchElement { public:
         } else if (p->ip_header()->ip_p == IP_PROTO_ICMP) {
             l = sizeof(click_icmp);
         } else {
-            click_chatter("Unsupported protocol %d", p->ip_header()->ip_p);
+            click_chatter("%p{element}: Unsupported protocol %d", e,  p->ip_header()->ip_p);
             return 0;
         }
         return l;
