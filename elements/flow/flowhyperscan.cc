@@ -207,18 +207,19 @@ FlowHyperScan::configure(Vector<String> &conf, ErrorHandler *errh)
 
 
 int FlowHyperScan::initialize(ErrorHandler *errh) {
-    hs_error_t err = hs_alloc_scratch(db_streaming, &_scratch);
+/*    hs_error_t err = hs_alloc_scratch(db_streaming, &_scratch);
     if (err != HS_SUCCESS) {
         return errh->error("ERROR: could not allocate scratch space. Error %d",err);
-    }
+    }*/
     for (int i =0; i < _state.weight();i ++) {
-        _state.get_value(i).scratch = _scratch;
+//        _state.get_value(i).scratch = _scratch;
         // Allocate enough scratch space to handle either streaming or block
         // mode, so we only need the one scratch region.
-        /*hs_error_t err = hs_alloc_scratch(db_streaming, &_state.get_value(i).scratch);
+        _state.get_value(i).scratch = 0;
+        hs_error_t err = hs_alloc_scratch(db_streaming, &_state.get_value(i).scratch);
         if (err != HS_SUCCESS) {
             return errh->error("ERROR: could not allocate scratch space. Error %d",err);
-        }*/
+        }
     }
 
     return 0;
@@ -244,6 +245,7 @@ void FlowHyperScan::push_batch(int port, FlowHyperScanState* flowdata, PacketBat
         }
     }
     FOR_EACH_PACKET(batch, p) {
+        if (p->length() == 0) continue;
         size_t matchCount = 0;
         hs_error_t err = hs_scan_stream(flowdata->stream,
         reinterpret_cast<const char*>(p->data()), p->length(), 0,
