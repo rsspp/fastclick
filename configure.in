@@ -220,6 +220,16 @@ else
     have_re2=no
 fi
 
+AC_CHECK_LIB([hs], [hs_compile_multi], [ac_have_hyperscan=yes], [ac_have_hyperscan=no])
+AC_CHECK_HEADERS([hs/hs.h], [ac_have_hyperscan_h=yes], [ac_have_hyperscan_h=no])
+if test "x$ac_have_hyperscan$ac_have_hyperscan_h" = "xyesyes"; then
+    have_hyperscan=yes
+    LIBS="$LIBS -lhs"
+    AC_DEFINE([HAVE_HYPERSCAN])
+else
+    have_hyperscan=no
+fi
+
 AC_SEARCH_LIBS([PAPI_start_counters], [papi], [ac_have_papi=yes], [ac_have_papi=no])
 AC_CHECK_HEADERS([papi.h], [ac_have_papi_h=yes], [ac_have_papi_h=no])
 if test "x$ac_have_papi_h$ac_have_papi" = "xyesyes"; then
@@ -2334,6 +2344,11 @@ fi
 dnl add 'gtp' if gtp elements are available
 if test "x$enable_gtp" = xyes; then
     provisions="$provisions gtp"
+fi
+
+dnl add 'hs' if HyperScan lib is available
+if test "x$have_hyperscan" = xyes; then
+    provisions="$provisions hs"
 fi
 
 dnl add 'int64' if 64-bit integers are available

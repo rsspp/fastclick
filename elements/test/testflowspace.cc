@@ -43,5 +43,6 @@ void TestFlowSpace::push_batch(int port, FourBytes* flowdata, PacketBatch* batch
 
 CLICK_ENDDECLS
 
+ELEMENT_REQUIRES(flow)
 EXPORT_ELEMENT(TestFlowSpace)
 ELEMENT_MT_SAFE(TestFlowSpace)
