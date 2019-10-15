@@ -16,7 +16,7 @@
 
 CLICK_DECLS
 
-FlowIPManager::FlowIPManager() : _verbose(1), _tables(0), _groups(0) {
+FlowIPManager::FlowIPManager() : _verbose(1), _tables(0), _groups(0), _def_thread(0) {
 
 }
 
@@ -27,7 +27,7 @@ FlowIPManager::~FlowIPManager() {
 int
 FlowIPManager::configure(Vector<String> &conf, ErrorHandler *errh)
 {
-    int _def_thread = click_max_cpu_ids();
+    _def_thread = click_max_cpu_ids();
 
     if (Args(conf, this, errh)
     		.read_or_set_p("GROUPS", _groups, 512)
@@ -91,11 +91,8 @@ int FlowIPManager::solve_initialize(ErrorHandler *errh) {
             return errh->error("Could not init data table %d!", i);
         if (_def_thread > 0)
             _tables[i].owner = i % _def_thread;
-
-
-
     }
-    click_chatter("%p{element} initialized with %d groups", this, _groups);
+    click_chatter("%p{element} initialized with %d groups and %d threads", this, _groups, _def_thread);
 
     return Router::InitFuture::solve_initialize(errh);
 }
