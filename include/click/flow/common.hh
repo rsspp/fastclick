@@ -6,6 +6,8 @@
 #include <click/allocator.hh>
 CLICK_DECLS
 
+#if HAVE_FLOW
+
 #define HAVE_FLOW_DYNAMIC 1
 
 #if DEBUG_CLASSIFIER > 1
@@ -548,3 +550,5 @@ inline void FlowControlBlock::release(int packets_nr) {
 		{fnt;}
 #endif //HAVE_FLOW
 CLICK_ENDDECLS
+
+#endif

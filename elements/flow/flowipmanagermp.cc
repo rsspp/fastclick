@@ -84,7 +84,7 @@ int FlowIPManagerMP::solve_initialize(ErrorHandler *errh) {
 
 
 
-    return 0;
+    return Router::InitFuture::solve_initialize(errh);
 }
 
 void FlowIPManagerMP::cleanup(CleanupStage stage) {
@@ -122,8 +122,10 @@ void FlowIPManagerMP::process(Packet* p, BatchBuilder& b) {
 	} else {
 		PacketBatch* batch;
 		batch = b.finish();
-		if (batch)
+		if (batch) {
+            fcb_stack->acquire(batch->count());
 			output_push_batch(0, batch);
+        }
 		fcb_stack = (FlowControlBlock*)((unsigned char*)fcbs + _flow_state_size_full * ret);
 		b.init();
         b.append(p);
@@ -145,8 +147,10 @@ void FlowIPManagerMP::push_batch(int, PacketBatch* batch) {
 	}
 
 	batch = b.finish();
-	if (batch)
+	if (batch) {
+        fcb_stack->acquire(batch->count());
 		output_push_batch(0, batch);
+    }
 
 
     //fcb_table = &_table;

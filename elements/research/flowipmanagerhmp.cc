@@ -52,7 +52,7 @@ int FlowIPManagerHMP::solve_initialize(ErrorHandler *errh) {
 	if (!fcbs)
 		return errh->error("Could not init data table !");
 
-    return 0;
+    return Router::InitFuture::solve_initialize(errh);
 }
 
 void FlowIPManagerHMP::cleanup(CleanupStage stage) {
