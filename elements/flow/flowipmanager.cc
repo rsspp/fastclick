@@ -34,6 +34,7 @@ FlowIPManager::configure(Vector<String> &conf, ErrorHandler *errh)
     		.read_or_set_p("CAPACITY", _table_size, 65536)
             .read_or_set("RESERVE",_reserve, 0)
             .read("DEF_THREAD", _def_thread)
+            .read("VERBOSE", _verbose)
             .complete() < 0)
         return -1;
 
@@ -92,10 +93,11 @@ int FlowIPManager::solve_initialize(ErrorHandler *errh) {
             _tables[i].owner = i % _def_thread;
 
 
+
     }
     click_chatter("%p{element} initialized with %d groups", this, _groups);
 
-    return 0;
+    return Router::InitFuture::solve_initialize(errh);
 }
 
 void FlowIPManager::cleanup(CleanupStage stage) {
@@ -105,176 +107,188 @@ void FlowIPManager::cleanup(CleanupStage stage) {
 
 void FlowIPManager::pre_migrate(DPDKDevice* dev, int from, Vector<Pair<int,int>> gids) {
 	CoreInfo &coref = _cores.get_value_for_thread(from);
-	coref.lock.acquire();
-	for (int i = 0;i < gids.size(); i++) {
-		coref.moves.push_back(gids[i]);
-		coref.pending = 1;
-	}
-	coref.lock.release();
+    coref.lock.acquire();
+    for (int i = 0;i < gids.size(); i++) {
+        coref.moves.push_back(gids[i]);
+    }
+    coref.pending = 1;
+    coref.lock.release();
 }
 
 
 void FlowIPManager::post_migrate(DPDKDevice* dev, int from) {
-	int port_id = dev->port_id;
-	int v = rte_eth_rx_queue_count(port_id, from);
+    int port_id = dev->port_id;
+    int v = rte_eth_rx_queue_count(port_id, from);
 
-	CoreInfo &coref = _cores.get_value_for_thread(from);
+    CoreInfo &coref = _cores.get_value_for_thread(from);
     uint64_t w = coref.count + v;
 
     if (coref.watch < w) {
-    	coref.lock.acquire();
-	if (coref.pending == 1) {
-		coref.watch = w;
-	} else {
-		click_chatter("Useless post migration for cpu %d. Already done...", from);
-    	}
-    	coref.lock.release();
+        coref.lock.acquire();
+        if (coref.pending == 1) {
+            coref.watch = w;
+        } else {
+            click_chatter("Useless post migration for cpu %d. Already done...", from);
+        }
+        coref.lock.release();
     }
-    //TODO fire migration task so if v == 0 or very low we do not wait for the next packetto migrate
+    //TODO fire migration task so if v == 0 or very low we do not wait for the next packet to migrate
 }
 
+/**
+ * Classify a packet in the given group
+ * FCB may change!
+ */
 void FlowIPManager::process(int groupid, Packet* p, BatchBuilder& b) {
-	IPFlow5ID fid = IPFlow5ID(p);
-	bool first = false;
-	gtable& t = _tables[groupid];
-	rte_hash*& table = t.hash;
+    IPFlow5ID fid = IPFlow5ID(p);
+    bool first = false;
+    gtable& t = _tables[groupid];
+    rte_hash*& table = t.hash;
 
-	int ret = rte_hash_lookup(table, &fid);
+    int ret = rte_hash_lookup(table, &fid);
 
-	if (ret < 0) { //new flow
-		ret = rte_hash_add_key(table, &fid);
-		if (ret < 0) {
-			click_chatter("Cannot add key (have %d items)!", rte_hash_count(table));
-			return;
-		}
-		first = true;
-	}
+    if (ret < 0) { //new flow
+        ret = rte_hash_add_key(table, &fid);
+        if (ret < 0) {
+            click_chatter("Cannot add key (have %d items)!", rte_hash_count(table));
+            return;
+        }
+        first = true;
+    }
 
-	if (unlikely(_verbose > 1))
-		click_chatter("Packet of flow group %d, id %d", groupid, ret);
+    if (unlikely(_verbose > 2))
+        click_chatter("Packet of flow group %d, id %d", groupid, ret);
 
-	if (b.last == ret) {
-		b.append(p);
-	} else {
-		PacketBatch* batch;
-		batch = b.finish();
-		if (batch)
-			output_push_batch(0, batch);
-		fcb_stack = (FlowControlBlock*)((unsigned char*)t.fcbs + _flow_state_size_full * ret);
-		b.init();
+    if (b.last == ret) {
         b.append(p);
-	}
+    } else {
+        PacketBatch* batch;
+        batch = b.finish();
+        if (batch) {
+            fcb_stack->acquire(batch->count());
+            output_push_batch(0, batch);
+        }
+        fcb_stack = (FlowControlBlock*)((unsigned char*)t.fcbs + _flow_state_size_full * ret);
+        b.init();
+        b.append(p);
+    }
 }
 
 inline void FlowIPManager::flush_queue(int groupid, BatchBuilder &b) {
-	if (unlikely(_tables[groupid].queue)) {
-		Packet* next = _tables[groupid].queue;
-		while (next != 0) {
-			Packet* r = next;
-			next = r->next();
-			process(groupid, r, b);
-		}
-		_tables[groupid].queue = 0;
-	}
+    if (unlikely(_tables[groupid].queue)) {
+        if (_verbose > 0)
+            click_chatter("Flush table %d from core %d", groupid, click_current_cpu_id());
+        Packet* next = _tables[groupid].queue;
+        while (next != 0) {
+            Packet* r = next;
+            next = r->next();
+            process(groupid, r, b);
+        }
+        _tables[groupid].queue = 0;
+    }
 }
 
 void FlowIPManager::init_assignment(Vector<unsigned> table) {
-	click_chatter("Initializing flow table assignment with %d buckets");
+    click_chatter("Initializing flow table assignment with %d buckets", table.size());
     assert(_tables && _groups);
     if (table.size() != _groups) {
         click_chatter("ERROR: Initializing %p{element} with %d buckets, but configured with %d buckets", this, table.size(), _groups);
         abort();
     }
-	for (int i = 0; i < table.size(); i++) {
+    for (int i = 0; i < table.size(); i++) {
         assert(table[i] < 64);
-		_tables[i].owner = table[i];
-	}
-
+        _tables[i].owner = table[i];
+    }
 }
 
 void FlowIPManager::do_migrate(CoreInfo &core) {
-	click_chatter("Core %d is releasing its migrated buckets (%d packets reached)", click_current_cpu_id(), core.watch);
-	core.lock.acquire(); //No race condition here, only this core can release the pending flag
-	for (int i = 0;i < core.moves.size(); i++) {
-		if (unlikely(_verbose > 1)) {
-			click_chatter("Table %d now owned by %d", core.moves[i].first, core.moves[i].second);
-		}
-		_tables[core.moves[i].first].owner = core.moves[i].second;
-	}
-	core.moves.clear();
-	core.pending = 0;
-	core.watch = 0;
-	core.lock.release();
+    click_chatter("Core %d is releasing its migrated buckets (%d packets reached)", click_current_cpu_id(), core.watch);
+    core.lock.acquire(); //No race condition here, only this core can release the pending flag
+    for (int i = 0;i < core.moves.size(); i++) {
+        if (unlikely(_verbose > 1)) {
+            click_chatter("Table %d now owned by %d", core.moves[i].first, core.moves[i].second);
+        }
+        assert(core.moves[i].second < 64 && core.moves[i].second >= 0 );
+        _tables[core.moves[i].first].owner = core.moves[i].second;
+    }
+    core.moves.clear();
+    core.pending = 0;
+    core.watch = 0;
+    core.lock.release();
 }
 
 void FlowIPManager::push_batch(int, PacketBatch* batch) {
-	CoreInfo& core = *_cores;
-	BatchBuilder b;
-	int count = batch->count();
+    CoreInfo& core = *_cores;
+    BatchBuilder b;
+    int count = batch->count();
 
-	core.count += count;
+    core.count += count;
 
-	if (core.pending) {
-		if (core.watch > 0 && core.watch < core.count) { //If core watch is 0, post_migration has not run yet and the watch is invalid
+    if (core.pending) {
+        if (core.watch > 0 && core.watch < core.count) { //If core watch is 0, post_migration has not run yet and the watch is invalid
 
-			do_migrate(core);
-		}
-	}
+            do_migrate(core);
+        }
+    }
 
-	int last = -1;
-	FOR_EACH_PACKET_SAFE(batch, p) {
-		int groupid = AGGREGATE_ANNO(p) % _groups;
-		if (core.pending && groupid != last) {
-			if (_tables[groupid].owner != click_current_cpu_id()) {
-				if (core.pending) //a new assignment has been seen ! Move our CPU if it wasn't done
-					do_migrate(core);
+    int last = -1;
+    FOR_EACH_PACKET_SAFE(batch, p) {
+        int groupid = AGGREGATE_ANNO(p) % _groups;
+            if (_tables[groupid].owner != click_current_cpu_id()) {
+                //First : the owner is for the old CPU core
+                //We enter here as the migration has not been done
+                //Then, core "from" release the table and change owner
+                //--> now we do not enter here anymore
+                //
+                //The table is not for us (it was moved in as only a core that actually saw a change can change the owner)
 
-				if (unlikely(_verbose > 0))
-					click_chatter("Packet of group %d pushed on core %d while %d still holds the lock", groupid, click_current_cpu_id(), _tables[groupid].owner);
+                if (core.pending) //a new assignment has been seen ! Move our CPU if it wasn't done
+                    do_migrate(core);
 
-				if (_tables[groupid].queue) {
-					_tables[groupid].queue->prev()->set_next(p);
-				} else {
-					_tables[groupid].queue = p;
-				}
-				_tables[groupid].queue->set_prev(p);
-				p->set_next(0);
+                if (unlikely(_verbose > 2))
+                    click_chatter("Packet of group %d pushed on core %d while %d still holds the lock", groupid, click_current_cpu_id(), _tables[groupid].owner);
 
-			} else {
-				flush_queue(groupid, b);
+                if (_tables[groupid].queue) {
+                    _tables[groupid].queue->prev()->set_next(p);
+                } else {
+                    _tables[groupid].queue = p;
+                }
+                _tables[groupid].queue->set_prev(p);
+                p->set_next(0);
 
-		        process(groupid, p, b);
-			}
-		} else
-		    process(groupid, p, b);
-		last = groupid;
-	}
+            } else {
+                if (!core.pending) //While waiting for the new balancing to be written, we may receive packets of a table that we have to give to someone else, that is CURRENTLY enqueing
+                    flush_queue(groupid, b); //This is a table for us. If there is a trailing queue (set by this same core before, we flush it)
 
-	batch = b.finish();
-	if (batch)
-		output_push_batch(0, batch);
+                process(groupid, p, b);
+            }
+            last = groupid;
+    }
 
-
+    batch = b.finish();
+    if (batch) {
+        fcb_stack->acquire(batch->count());
+        output_push_batch(0, batch);
+    }
 
     //fcb_table = &_table;
-	//fcb_stack =
-
+    //fcb_stack =
 }
 
 /*
-enum {h_leaves_count, h_active_count, h_print, h_timeout_count};
-String FlowIPManager::read_handler(Element* e, void* thunk) {
-    FlowIPManager* fc = static_cast<FlowIPManager*>(e);
+   enum {h_leaves_count, h_active_count, h_print, h_timeout_count};
+   String FlowIPManager::read_handler(Element* e, void* thunk) {
+   FlowIPManager* fc = static_cast<FlowIPManager*>(e);
 
-    fcb_table = &fc->_table;
-    switch ((intptr_t)thunk) {
+   fcb_table = &fc->_table;
+   switch ((intptr_t)thunk) {
 
-};
+   };
 
-void FlowIPManager::add_handlers() {
+   void FlowIPManager::add_handlers() {
 
 
-}*/
+   }*/
 
 
 
