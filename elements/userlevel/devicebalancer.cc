@@ -1426,7 +1426,7 @@ int MethodPianoRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
 
 
 
-DeviceBalancer::DeviceBalancer() : _timer(this), _verbose(false), _manager(0) {
+DeviceBalancer::DeviceBalancer() : _timer(this), _verbose(false), _manager(0), _active(true) {
 }
 
 DeviceBalancer::~DeviceBalancer() {
