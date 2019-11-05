@@ -84,7 +84,7 @@ This class set up RSS, and the balancing periodic call is ignored.
 ##### MethodPianoRSS
 This class implements RSS++'s logic. It inherits BalanceMethodRSS but do not ignore the balancing call.
 The code is documented and available at [elements/userlevel/devicebalancer.cc#L530](https://github.com/rsspp/fastclick/blob/master/elements/userlevel/devicebalancer.cc#L530).
-In a nutshell there are steps:
+The various phase of the function work as follow:
  - Copy the packet counters if in BPF mode (value is directly accessed in DPDK mode).
  - Do a first pass over the load to counts the overloaded cores and compute the average load.
  - Count the number of packets per core
