@@ -79,7 +79,7 @@ The "realcpu" CYCLES parameter will parse /proc/stat to get the current CPU load
 Each module is backed by a C++ class (metron is MethodMetron, rss++/rsspp is MethodPianoRSS, "rss" is BalanceMethodRSS, ...).
 
 ##### BalanceMethodRSS
-This class set up RSS, the balancing periodic call is ignored.
+This class set up RSS, and the balancing periodic call is ignored.
 
 ##### MethodPianoRSS
 This class implements RSS++'s logic. It inherits BalanceMethodRSS but do not ignore the balancing call.
@@ -110,7 +110,8 @@ FromDPDKDevice(..., RSS_AGGREGATE 1)
     
 balancer :: DeviceBalancer(DEV fd0, METHOD pianorss, VERBOSE 0, TIMER 100, CPUS $CPU, TARGET 0.75, STARTCPU -1, LOAD 0.90, RSSCOUNTER agg, AUTOSCALE 1, CYCLES realcpu, RETA_SIZE $RETA_SIZE, IMBALANCE_THRESHOLD 0.02, MANAGER flow);
 ```
-
+If a "MANAGER" is set up in DeviceBalancer, the RSS++ balancing module will call the `pre_migrate()` function of that element before writing the indirection table. And the `post_migrate()` function will be called afterwise. The pre_migrate function save the moves to be operated (migration of bucket tables from one core to another) to be operated when a new assignation is observed on any given core.
+The post_migrate functions will read the number of packets in the queue and set up the per-bucket trigger at which a migration is to be considered as done by the NIC. The code of the flow table itself strictly follows the migration process explained in the paper.
 
 ## Parent's code
 Technically this repository is based on Metron's FastClick branch, supporting the paper of the same name (see README.metron.md) but this is only to compare against Metron, by using its flow parsing methods.
