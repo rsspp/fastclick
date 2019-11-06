@@ -18,7 +18,9 @@
 #include <click/multithread.hh>
 #include <click/straccum.hh>
 
+#if HAVE_NUMA
 #include <click/numa.hh>
+#endif
 #include <rte_flow.h>
 #include "devicebalancer.hh"
 #ifdef HAVE_BPF
@@ -315,7 +317,7 @@ void MethodMetron::rebalance(Vector<Pair<int,float>> load) {
 /**
  * RSS base
  */
-BalanceMethodRSS::BalanceMethodRSS(DeviceBalancer* b, Element* fd) : BalanceMethodDevice(b,fd), _verifier(0) {
+BalanceMethodRSS::BalanceMethodRSS(DeviceBalancer* b, Element* fd) : BalanceMethodDevice(b,fd), _verifier(0), _isolate(0) {
 }
 
 int BalanceMethodRSS::initialize(ErrorHandler *errh, int startwith) {
@@ -349,7 +351,7 @@ int BalanceMethodRSS::initialize(ErrorHandler *errh, int startwith) {
         struct rte_flow_error error;
         rte_eth_dev_stop(port_id);
         //rte_eth_promiscuous_disable(port_id);
-        int res = rte_flow_isolate(port_id, 1, &error);
+        int res = rte_flow_isolate(port_id, _isolate, &error);
         if (res != 0)
             errh->warning("Warning %d : Could not set isolated mode because %s !",res,error.message);
 
@@ -361,6 +363,7 @@ int BalanceMethodRSS::initialize(ErrorHandler *errh, int startwith) {
         _table[i] = i % startwith;
     }
 
+    _fd->set_rss_reta(_fd, _table);
     click_chatter("RSS initialized with %d CPUs and %d buckets", startwith, _table.size());
     int err = BalanceMethodDevice::initialize(errh, startwith);
     if (err != 0)
@@ -628,7 +631,11 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
         machine_load.total_load += load[j].load;
 
         if (do_numa) {
+#if HAVE_NUMA
             int numaid =  Numa::get_numa_node_of_cpu(load[j].cpu_phys_id);
+#else
+            int numaid = 0;
+#endif
             sockets_load[numaid].N++;
             sockets_load[numaid].total_load += load[j].load;
         }
@@ -855,7 +862,9 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
         int cpuid = load[i].cpu_phys_id;
         int numa = 0;
         if (do_numa) {
+#if HAVE_NUMA
             numa = Numa::get_numa_node_of_cpu(cpuid);
+#endif
         }
         SocketLoad &socket = sockets_load[numa];
         Vector<float> &imbalance = socket.imbalance;
@@ -930,13 +939,21 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
         Vector<Bucket> buckets_indexes;
         Vector<int> oid;
         for (int i = 0; i < socket.oid.size(); i++) {
-            if (!do_numa || Numa::get_numa_node_of_cpu(socket.oid[i]) == nid) {
+            if (!do_numa
+#if HAVE_NUMA
+                    || Numa::get_numa_node_of_cpu(socket.oid[i]) == nid
+#endif
+                    ) {
                 oid.push_back(socket.oid[i]);
             }
         }
         Vector<int> uid;
         for (int i = 0; i < socket.uid.size(); i++) {
-            if (!do_numa || Numa::get_numa_node_of_cpu(socket.uid[i]) == nid) {
+            if (!do_numa
+#if HAVE_NUMA
+                    || Numa::get_numa_node_of_cpu(socket.uid[i]) == nid
+#endif
+                    ) {
                 uid.push_back(socket.uid[i]);
             }
         }
@@ -946,7 +963,9 @@ void MethodPianoRSS::rebalance(Vector<Pair<int,float>> rload) {
                 if (map_phys_to_id[_table[j]] == oid[u]) {
                     int numa = 0;
                     if (do_numa) {
+#if HAVE_NUMA
                         numa = Numa::get_numa_node_of_cpu(_table[j]);
+#endif
                     }
                     buckets_indexes.push_back(Bucket{.oid_id =u,.bucket_id =j, .cpu_id = oid[u]});
                     break;
@@ -1395,9 +1414,11 @@ int MethodPianoRSS::configure(Vector<String> &conf, ErrorHandler *errh)  {
     _target_load = t;
     _imbalance_alpha = i;
     _threshold = threshold;
+#if HAVE_NUMA
     if (_numa)
         _numa_num = Numa::get_max_numas();
     else
+#endif
         _numa_num = 1;
 
     int err = BalanceMethodRSS::configure(conf, errh);
@@ -1513,7 +1534,7 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
 
     if (method == "metron") {
         _method = new MethodMetron(this, dev, config);
-    } else if (method == "pianorss") {
+    } else if (method == "pianorss" || method== "rss++" || method == "rsspp") {
         _method = new MethodPianoRSS(this, dev, config);
     } else if (method == "rss") {
         _method = new BalanceMethodRSS(this, dev);

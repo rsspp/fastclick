@@ -100,6 +100,7 @@ protected:
     bool _update_reta_flow;
     RSSVerifier* _verifier;
     int _reta_size;
+    bool _isolate;
 
 };
 
