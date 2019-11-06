@@ -85,6 +85,9 @@ public:
 
     void init_assignment(Vector<unsigned> table);
 
+    void add_handlers();
+
+    static String read_handler(Element* e, void* thunk);
 private:
 
     struct CoreInfo {

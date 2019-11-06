@@ -7,6 +7,7 @@
 #include <click/args.hh>
 #include <click/ipflowid.hh>
 #include <click/routervisitor.hh>
+#include <click/straccum.hh>
 #include "flowipmanager.hh"
 #include <rte_hash.h>
 #include <rte_hash_crc.h>
@@ -272,20 +273,26 @@ void FlowIPManager::push_batch(int, PacketBatch* batch) {
     //fcb_stack =
 }
 
-/*
-   enum {h_leaves_count, h_active_count, h_print, h_timeout_count};
-   String FlowIPManager::read_handler(Element* e, void* thunk) {
+enum {h_count};
+String FlowIPManager::read_handler(Element* e, void* thunk) {
    FlowIPManager* fc = static_cast<FlowIPManager*>(e);
 
-   fcb_table = &fc->_table;
    switch ((intptr_t)thunk) {
+       case h_count: {
+        StringAccum acc;
+        for (int i = 0; i < fc->_groups; i++) {
+            acc << rte_hash_count(fc->_tables[i].hash) << "\n";
+        }
+        return acc.take_string(); }
+       default:
+        return "<error>";
 
    };
+}
 
-   void FlowIPManager::add_handlers() {
-
-
-   }*/
+void FlowIPManager::add_handlers() {
+    add_read_handler("count", read_handler, h_count);
+}
 
 
 
