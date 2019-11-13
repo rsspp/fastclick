@@ -10,11 +10,16 @@ CLICK_DECLS
  * restores outermost transport header
  * =d
  *
- * Put outermost IP header back onto a stripped packet, based on the IP Header type,
- * and the IP header annotation from MarkIPHeader or CheckIPHeader. If IP header already on,
- * forwards packet unmodified.
+ * Put outermost transport header back onto a stripped packet, based
+ * on the transport header annotation from, e.g. MarkIPHeader or CheckIPHeader.
+ * If transport header already on forwards packet unmodified.
  *
- * =a CheckIPHeader, MarkIPHeader, StripIPHeader */
+ * Beware that this element will not "undo" StripTransportHeader.
+ * StripTransportHeader will jump from anywhere to the first byte of payload
+ * after the transport header. This element will return to the byte before the
+ * transport header.
+ *
+ * =a CheckIPHeader, MarkIPHeader, StripIPHeader, StripTransportHeader */
 
 class UnstripTransportHeader : public BatchElement {
 

@@ -83,13 +83,12 @@ public:
     struct DevInfo {
         inline DevInfo() :
             vendor_id(PCI_ANY_ID), vendor_name(), device_id(PCI_ANY_ID), driver(0),
-            rx_queues(0,false), tx_queues(0,false),
-            n_rx_descs(0), n_tx_descs(0),
+            rx_queues(0, false), tx_queues(0, false),
             promisc(false),
             mq_mode((enum rte_eth_rx_mq_mode)-1), mq_mode_str(""),
-            num_pools(0),
-			vf_vlan(),
-            vlan_filter(false), vlan_strip(false),
+            num_pools(0), vf_vlan(), vlan_filter(false), vlan_strip(false), vlan_extend(false),
+            lro(false), jumbo(false),
+            n_rx_descs(0), n_tx_descs(0),
             init_mac(), init_mtu(0), init_rss(-1), init_fc_mode(FC_UNSET), rx_offload(0), tx_offload(0),
             init_isolate(false) {
             rx_queues.reserve(128);
@@ -97,18 +96,21 @@ public:
         }
 
         void print_device_info() {
-            click_chatter("   Vendor   ID: %d", vendor_id);
-            click_chatter("   Vendor Name: %s", vendor_name.c_str());
-            click_chatter("   Device   ID: %d", device_id);
-            click_chatter("   Driver Name: %s", driver);
-            click_chatter("Promisc   Mode: %s", promisc? "true":"false");
-            click_chatter("Vlan Filtering: %s", vlan_filter? "true":"false");
-            click_chatter("Vlan Stripping: %s", vlan_strip? "true":"false");
-            click_chatter("   MAC Address: %s", init_mac.unparse().c_str());
-            click_chatter("# of Rx Queues: %d", rx_queues.size());
-            click_chatter("# of Tx Queues: %d", tx_queues.size());
-            click_chatter("# of Rx  Descs: %d", n_rx_descs);
-            click_chatter("# of Tx  Descs: %d", n_tx_descs);
+            click_chatter("                Vendor   ID: %d", vendor_id);
+            click_chatter("                Vendor Name: %s", vendor_name.c_str());
+            click_chatter("                Device   ID: %d", device_id);
+            click_chatter("                Driver Name: %s", driver);
+            click_chatter("           Promiscuous Mode: %s", promisc? "true":"false");
+            click_chatter("          VLAN    Filtering: %s", vlan_filter? "true":"false");
+            click_chatter("          VLAN    Stripping: %s", vlan_strip? "true":"false");
+            click_chatter("          VLAN QinQ(extend): %s", vlan_extend? "true":"false");
+            click_chatter("Large Receive Offload (LRO): %s", lro ? "true":"false");
+            click_chatter("    Rx Jumbo Frames Offload: %s", jumbo ? "true":"false");
+            click_chatter("                MAC Address: %s", init_mac.unparse().c_str());
+            click_chatter("             # of Rx Queues: %d", rx_queues.size());
+            click_chatter("             # of Tx Queues: %d", tx_queues.size());
+            click_chatter("             # of Rx  Descs: %d", n_rx_descs);
+            click_chatter("             # of Tx  Descs: %d", n_tx_descs);
         }
 
         uint16_t vendor_id;
@@ -117,15 +119,18 @@ public:
         const char *driver;
         Vector<bool> rx_queues;
         Vector<bool> tx_queues;
-        unsigned n_rx_descs;
-        unsigned n_tx_descs;
         bool promisc;
-        int num_pools;
-        Vector<int> vf_vlan;
         bool vlan_filter;
         bool vlan_strip;
+        bool vlan_extend;
+        bool lro;
+        bool jumbo;
+        unsigned n_rx_descs;
+        unsigned n_tx_descs;
         enum rte_eth_rx_mq_mode mq_mode;
         String mq_mode_str;
+        int num_pools;
+        Vector<int> vf_vlan;
         EtherAddress init_mac;
         uint16_t init_mtu;
         int init_rss;
@@ -145,8 +150,8 @@ public:
     portid_t get_port_id() { return port_id; }
 
     int add_rx_queue(
-        unsigned &queue_id, bool promisc, bool vlan_filter, bool vlan_strip,
-        unsigned n_desc, ErrorHandler *errh
+        unsigned &queue_id, bool promisc, bool vlan_filter, bool vlan_strip, bool vlan_extend,
+        bool lro, bool jumbo, unsigned n_desc, ErrorHandler *errh
     ) CLICK_COLD;
 
     int add_tx_queue(
@@ -317,8 +322,9 @@ private:
     static bool no_more_buffer_msg_printed;
 
     int initialize_device(ErrorHandler *errh) CLICK_COLD;
-    int add_queue(Dir dir, unsigned &queue_id, bool promisc, bool vlan_filter, bool vlan_strip,
-                   unsigned n_desc, ErrorHandler *errh) CLICK_COLD;
+    int add_queue(Dir dir, unsigned &queue_id,
+                    bool promisc, bool vlan_filter, bool vlan_strip, bool vlan_extend,
+                    bool lro, bool jumbo, unsigned n_desc, ErrorHandler *errh) CLICK_COLD;
 
     static int alloc_pktmbufs(ErrorHandler* errh) CLICK_COLD;
 

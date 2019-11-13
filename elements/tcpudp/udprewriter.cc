@@ -6,7 +6,7 @@
  *
  * Copyright (c) 2000 Massachusetts Institute of Technology
  * Copyright (c) 2008-2010 Meraki, Inc.
- * Copyright (c) 2016-2018 KTH Royal Institute of Technology
+ * Copyright (c) 2016-2019 KTH Royal Institute of Technology
  * Copyright (c) 2017 University of Liege
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -101,15 +101,15 @@ UDPRewriter::configure(Vector<String> &conf, ErrorHandler *errh)
     timeouts[1] = default_guarantee;
 
     if (Args(this, errh).bind(conf)
-	.read("DST_ANNO", dst_anno)
-	.read("REPLY_ANNO", AnnoArg(1), reply_anno).read_status(has_reply_anno)
-	.read("UDP_TIMEOUT", SecondsArg(), timeouts[0])
-	.read("TIMEOUT", SecondsArg(), timeouts[0])
-	.read("UDP_STREAMING_TIMEOUT", SecondsArg(), _udp_streaming_timeout).read_status(has_udp_streaming_timeout)
-	.read("STREAMING_TIMEOUT", SecondsArg(), _udp_streaming_timeout).read_status(has_streaming_timeout)
-	.read("UDP_GUARANTEE", SecondsArg(), timeouts[1])
-    .read("HANDLE_MIGRATION", handle_migration)
-	.consume() < 0)
+        .read("DST_ANNO", dst_anno)
+        .read("REPLY_ANNO", AnnoArg(1), reply_anno).read_status(has_reply_anno)
+        .read("UDP_TIMEOUT", SecondsArg(), timeouts[0])
+        .read("TIMEOUT", SecondsArg(), timeouts[0])
+        .read("UDP_STREAMING_TIMEOUT", SecondsArg(), _udp_streaming_timeout).read_status(has_udp_streaming_timeout)
+        .read("STREAMING_TIMEOUT", SecondsArg(), _udp_streaming_timeout).read_status(has_streaming_timeout)
+        .read("UDP_GUARANTEE", SecondsArg(), timeouts[1])
+        .read("HANDLE_MIGRATION", handle_migration)
+        .consume() < 0)
 	return -1;
 
     for (unsigned i=0; i<_mem_units_no; i++) {
@@ -119,7 +119,7 @@ UDPRewriter::configure(Vector<String> &conf, ErrorHandler *errh)
 
     _annos = (dst_anno ? 1 : 0) + (has_reply_anno ? 2 + (reply_anno << 2) : 0);
     if (!has_udp_streaming_timeout && !has_streaming_timeout) {
-        for (int i = 0; i < _mem_units_no; i++) {
+        for (unsigned i = 0; i < _mem_units_no; i++) {
             _udp_streaming_timeout = _timeouts[i][0];
         }
     }
@@ -240,7 +240,7 @@ UDPRewriter::dump_mappings_handler(Element *e, void *)
     UDPRewriter *rw = (UDPRewriter *)e;
     click_jiffies_t now = click_jiffies();
     StringAccum sa;
-    for (int i = 0; i < rw->_mem_units_no; i++) {
+    for (unsigned i = 0; i < rw->_mem_units_no; i++) {
         for (Map::iterator iter = rw->_state.get_value(i).map.begin(); iter.live(); ++iter) {
             iter->flow()->unparse(sa, iter->direction(), now);
             sa << '\n';
