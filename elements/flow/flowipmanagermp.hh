@@ -30,7 +30,7 @@ struct rte_hash;
  * neither set the offsets for placement in the FCB automatically. Look at
  * the middleclick branch for alternatives.
  */
-class FlowIPManagerMP: public VirtualFlowManager, Router::InitFuture {
+class FlowIPManagerMP: public VirtualFlowManager, Router::InitFuture, MigrationListener {
 public:
 
 
@@ -49,8 +49,8 @@ public:
     void cleanup(CleanupStage stage) override CLICK_COLD;
 
     //First : group id, second : destination cpu
-    void pre_migrate(DPDKDevice* dev, int from, Vector<Pair<int,int>> gids);
-    void post_migrate(DPDKDevice* dev, int from);
+    void pre_migrate(DPDKEthernetDevice* dev, int from, std::vector<std::pair<int,int>> gids) override;
+    void post_migrate(DPDKEthernetDevice* dev, int from) override;
 
     void push_batch(int, PacketBatch* batch);
 

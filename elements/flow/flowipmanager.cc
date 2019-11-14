@@ -11,7 +11,6 @@
 #include "flowipmanager.hh"
 #include <rte_hash.h>
 #include <rte_hash_crc.h>
-#include <click/dpdkdevice.hh>
 #include "../userlevel/fromdpdkdevice.hh"
 #include <rte_ethdev.h>
 
@@ -103,7 +102,7 @@ void FlowIPManager::cleanup(CleanupStage stage) {
 }
 
 
-void FlowIPManager::pre_migrate(DPDKDevice* dev, int from, Vector<Pair<int,int>> gids) {
+void FlowIPManager::pre_migrate(DPDKEthernetDevice* dev, int from, std::vector<std::pair<int,int>> gids) {
 	CoreInfo &coref = _cores.get_value_for_thread(from);
     coref.lock.acquire();
     for (int i = 0;i < gids.size(); i++) {
@@ -114,8 +113,8 @@ void FlowIPManager::pre_migrate(DPDKDevice* dev, int from, Vector<Pair<int,int>>
 }
 
 
-void FlowIPManager::post_migrate(DPDKDevice* dev, int from) {
-    int port_id = dev->port_id;
+void FlowIPManager::post_migrate(DPDKEthernetDevice* dev, int from) {
+    int port_id = dev->get_port_id();
     int v = rte_eth_rx_queue_count(port_id, from);
 
     CoreInfo &coref = _cores.get_value_for_thread(from);
@@ -186,14 +185,14 @@ inline void FlowIPManager::flush_queue(int groupid, BatchBuilder &b) {
     }
 }
 
-void FlowIPManager::init_assignment(Vector<unsigned> table) {
-    click_chatter("Initializing flow table assignment with %d buckets", table.size());
+void FlowIPManager::init_assignment(unsigned* table, int sz) {
+    click_chatter("Initializing flow table assignment with %d buckets", sz);
     assert(_tables && _groups);
-    if (table.size() != _groups) {
-        click_chatter("ERROR: Initializing %p{element} with %d buckets, but configured with %d buckets", this, table.size(), _groups);
+    if (sz != _groups) {
+        click_chatter("ERROR: Initializing %p{element} with %d buckets, but configured with %d buckets", this, sz, _groups);
         abort();
     }
-    for (int i = 0; i < table.size(); i++) {
+    for (int i = 0; i < sz; i++) {
         assert(table[i] < 64);
         _tables[i].owner = table[i];
     }

@@ -9,8 +9,10 @@
 #include <click/pair.hh>
 #include <click/flow/common.hh>
 #include <click/flow/flowelement.hh>
+#include <nicscheduler/ethernetdevice.hh>
+#include <nicscheduler/nicscheduler.hh>
 
-
+#include <utility>
 
 CLICK_DECLS
 class DPDKDevice;
@@ -60,7 +62,7 @@ struct BatchBuilder {
  * neither set the offsets for placement in the FCB automatically. Look at
  * the middleclick branch for alternatives.
  */
-class FlowIPManager: public VirtualFlowManager, public Router::InitFuture {
+class FlowIPManager: public VirtualFlowManager, public Router::InitFuture, public MigrationListener {
 public:
 
     FlowIPManager() CLICK_COLD;
@@ -77,13 +79,13 @@ public:
     void cleanup(CleanupStage stage) CLICK_COLD;
 
     //First : group id, second : destination cpu
-    void pre_migrate(DPDKDevice* dev, int from, Vector<Pair<int,int>> gids);
-    void post_migrate(DPDKDevice* dev, int from);
-
+    void pre_migrate(DPDKEthernetDevice* dev, int from, std::vector<std::pair<int,int>> gids) override;
+    void post_migrate(DPDKEthernetDevice* dev, int from) override;
+    void init_assignment(unsigned* table, int sz) override;
 
     void push_batch(int, PacketBatch* batch);
 
-    void init_assignment(Vector<unsigned> table);
+
 
     void add_handlers();
 
@@ -91,13 +93,13 @@ public:
 private:
 
     struct CoreInfo {
-	CoreInfo() : watch(0), count(0), lock(), pending(false) {
+        CoreInfo() : watch(0), count(0), lock(), pending(false) {
     	};
     	uint64_t count;
     	uint64_t watch;
     	Spinlock lock;
 	bool pending;
-    	Vector<Pair<int,int> > moves; //First : group id, second : destination cpu
+	Vector<std::pair<int,int> > moves; //First : group id, second : destination cpu
     } CLICK_ALIGNED(CLICK_CACHE_LINE_SIZE);
 
     struct gtable {

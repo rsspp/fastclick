@@ -1,7 +1,7 @@
 #ifndef CLICK_FROMDEVICE_USERLEVEL_HH
 #define CLICK_FROMDEVICE_USERLEVEL_HH
 #include <click/batchelement.hh>
-#include <click/ethernetdevice.hh>
+#include "../../vendor/nicscheduler/ethernetdevice.hh"
 #include "elements/userlevel/kernelfilter.hh"
 
 #if HAVE_BPF

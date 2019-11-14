@@ -92,12 +92,12 @@ void FlowIPManagerMP::cleanup(CleanupStage stage) {
 }
 
 
-void FlowIPManagerMP::pre_migrate(DPDKDevice* dev, int from, Vector<Pair<int,int>> gids) {
+void FlowIPManagerMP::pre_migrate(DPDKEthernetDevice* dev, int from, std::vector<std::pair<int,int>> gids) {
 
 }
 
 
-void FlowIPManagerMP::post_migrate(DPDKDevice* dev, int from) {
+void FlowIPManagerMP::post_migrate(DPDKEthernetDevice* dev, int from) {
 
 }
 

@@ -2,13 +2,12 @@
 #define CLICK_DEVICEBALANCER_HH
 
 #include <click/batchelement.hh>
-#include <click/ethernetdevice.hh>
 #include <click/dpdkdevice.hh>
+#include <nicscheduler/ethernetdevice.hh>
+#include <nicscheduler/nicscheduler.hh>
 #include "../analysis/aggcountervector.hh"
 
 CLICK_DECLS
-
-
 
 enum target_method {
     TARGET_LOAD,
@@ -24,127 +23,9 @@ enum load_method {
 };
 
 
-class LoadTracker {
-    public:
-
-    protected:
-    int load_tracker_initialize(ErrorHandler* errh);
-
-    Vector<float> _past_load;
-    Vector<bool> _moved;
-    Vector<click_jiffies_t> _last_movement;
-
-};
 
 class FlowIPManager;
 class DeviceBalancer;
-
-class BalanceMethod { public:
-    BalanceMethod(DeviceBalancer* b) : balancer(b) {
-    }
-
-    virtual int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
-    virtual void rebalance(Vector<Pair<int,float>> load) = 0;
-    virtual int initialize(ErrorHandler *errh, int startwith);
-    virtual void cpu_changed();
-
-protected:
-
-    DeviceBalancer* balancer;
-};
-
-class BalanceMethodDevice : public BalanceMethod { public:
-    BalanceMethodDevice(DeviceBalancer* b, Element* fd);
-
-    EthernetDevice* _fd;
-    bool _is_dpdk;
-    friend class DeviceBalancer;
-};
-
-class MethodMetron : public BalanceMethodDevice, public LoadTracker { public:
-
-    MethodMetron(DeviceBalancer* b, Element* fd, String config) : BalanceMethodDevice(b,fd) {
-        _rules_file = config;
-    }
-
-    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
-    int initialize(ErrorHandler *errh, int startwith) override CLICK_COLD;
-
-    void rebalance(Vector<Pair<int,float>> load) override;
-private:
-    String _rules_file;
-    int _min_movement;
-    int _deflation_factor;
-};
-
-class RSSVerifier;
-
-class BalanceMethodRSS : public BalanceMethodDevice { public:
-
-    BalanceMethodRSS(DeviceBalancer* b, Element* fd);
-
-    int initialize(ErrorHandler *errh, int startwith) override CLICK_COLD;
-    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
-    void rebalance(Vector<Pair<int,float>> load) override;
-    Vector<unsigned> _table;
-
-    void cpu_changed() override;
-
-
-    struct rte_eth_rss_conf _rss_conf;
-    Vector<rte_flow*> _flows;
-
-    bool update_reta_flow(bool validate = false);
-    bool update_reta(bool validate = false);
-protected:
-    bool _update_reta_flow;
-    RSSVerifier* _verifier;
-    int _reta_size;
-    bool _isolate;
-
-};
-
-
-
-class MethodRSSRR : public BalanceMethodRSS { public:
-
-    MethodRSSRR(DeviceBalancer* b, Element* fd) : BalanceMethodRSS(b,fd) {
-    }
-
-    void rebalance(Vector<Pair<int,float>> load) override;
-};
-
-
-class MethodPianoRSS : public BalanceMethodRSS, public LoadTracker { public:
-
-    MethodPianoRSS(DeviceBalancer* b, Element* fd, String config);
-
-    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
-    int initialize(ErrorHandler *errh, int startwith) override;
-
-    void rebalance(Vector<Pair<int,float>> load) override;
-private:
-
-    //We keep the space here to avoid reallocation
-    struct Node {
-	uint64_t count;
-	uint64_t variance;
-	bool moved;
-    };
-    Vector<Node> _count;
-
-    bool _counter_is_xdp;
-    int _xdp_table_fd;
-    Element* _counter;
-
-    float _target_load;
-    float _imbalance_alpha;
-    float _threshold;
-
-    bool _dancer;
-    bool _numa;
-    int _numa_num;
-};
 
 /*
 =title DeviceBalancer
@@ -152,9 +33,31 @@ private:
 =c
 
 DeviceBalancer()
+
+=s threads
+
+Balance flows among cores using the NICScheduler library
+
+=d
+
+The DeviceBalancer element periodically calls
+NICScheduler's balancing method to re-arrange flows-to-queue (and therefore core)
+mapping of an Ethernet device, such as FromDevice, an external standard Linux
+interface, or FromDPDKDevice.
+The best known method supported by this element is "RSS++", see our
+CoNEXT 2019 paper for more details.
+
+More details about the methods can be found in include/click/NICScheduler*
+According to the result of the optimization, the element will re-program
+the indirection table using the ethtool API.
+
+This element extends NICScheduler*
+be used to implement NICScheduler*
+Therefore if you're looking into the implementation, you should read
+vendor/NICScheduler*
 */
 
-class DeviceBalancer : public Element {
+class DeviceBalancer : public Element, public NICScheduler {
 public:
 
     DeviceBalancer() CLICK_COLD;
@@ -164,70 +67,54 @@ public:
     const char *port_count() const { return "0/0"; }
     const char *processing() const { return AGNOSTIC; }
 
-//    int configure_phase() const     { return CONFIGURE_PHASE_PRIVILEGED; }
-
     bool can_live_reconfigure() const { return false; }
 
     int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     int initialize(ErrorHandler *) override CLICK_COLD;
     void add_handlers() override CLICK_COLD;
-   /*     void cleanup(CleanupStage) CLICK_COLD;*/
 
     void run_timer(Timer* t) override;
 
-
-
-    BalanceMethod* _method;
+    //Ignore a certain amount of cores not to be used
     int _core_offset;
-    int _tick;
-    int _tick_max;
-    int _current_tick;
+
+    //The timer object, handling the tick call
     Timer _timer;
+
+    //Maximum number of CPUs
     int _max_cpus;
+
+    //The target method, usually load
     target_method _target;
+
+    //The load computation method, usually cyclesthenqueue
     load_method _load;
+
+    //Number of cores to start with
     int _startwith;
-    bool _active;
-    bool _autoscale;
 
-
+    /*System CPU load is given as an absolute value, so we need to
+    remember the value at th last tick to compute the current load.*/
     struct CPUStat {
 		CPUStat() : lastTotal(0), lastIdle(0) {
 		}
         unsigned long long lastTotal;
         unsigned long long lastIdle;
     };
-
     Vector<CPUStat> _cpustats;
 
-    int _verbose;
-    FlowIPManager* _manager;
-
-    struct CpuInfo {
-	int id;
-	unsigned long long last_cycles;
-    };
-    CpuInfo make_info(int _id);
-	int addCore();
-	void removeCore(int phys_id);
-
+    /**
+     * @return the maximum number of CPUs allowed to be used
+     */
 	int max_cpus() {
 		return _max_cpus;
 	}
 
-    Vector<CpuInfo> _used_cpus;
-    Vector<int> _available_cpus;
-    double _overloaded_thresh = 0.75;
-    double _underloaded_thresh = 0.25;
-
-    struct RunStat {
-        RunStat() : imbalance(0), count(0), time(0) {
-        };
-        double imbalance;
-        int count;
-        uint64_t time;
-    };
-    per_thread<Vector<RunStat>> _stats;
+	/**
+     * Build a CpuInfo structure from a CPU id, using the current
+     * router number of cycles for that CPU
+     */
+    virtual CpuInfo make_info(int id) override;
 
 private:
     static int write_param(const String &in_s, Element *e, void *vparam, ErrorHandler *errh) CLICK_COLD;

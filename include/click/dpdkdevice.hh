@@ -37,7 +37,7 @@
 #include <click/args.hh>
 #include <click/etheraddress.hh>
 #include <click/timer.hh>
-#include <click/ethernetdevice.hh>
+#include <nicscheduler/ethernetdevice.hh>
 
 #if RTE_VERSION < RTE_VERSION_NUM(19,8,0,0)
 #define rte_ipv4_hdr ipv4_hdr
@@ -72,10 +72,8 @@ extern bool dpdk_enabled;
 
 struct DPDKEthDevice;
 
-class DPDKDevice : public EthernetDevice {
+class DPDKDevice : public DPDKEthernetDevice {
 public:
-
-    portid_t port_id;
 
     DPDKDevice() CLICK_COLD;
     DPDKDevice(portid_t port_id) CLICK_COLD;
@@ -146,8 +144,6 @@ public:
         ErrorHandler   *errh
     );
 #endif
-
-    portid_t get_port_id() { return port_id; }
 
     int add_rx_queue(
         unsigned &queue_id, bool promisc, bool vlan_filter, bool vlan_strip, bool vlan_extend,

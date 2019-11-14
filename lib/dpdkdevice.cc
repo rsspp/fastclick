@@ -38,23 +38,28 @@ CLICK_DECLS
 
 
 
-static int dpdk_eth_set_rss_reta(EthernetDevice* eth, const Vector<unsigned> &reta) {
-	return ((DPDKDevice*)eth)->dpdk_set_rss_reta(reta);
+static int dpdk_eth_set_rss_reta(EthernetDevice* eth, unsigned* table, unsigned table_sz) {
+    Vector<unsigned> v = Vector<unsigned>::from_c(table_sz,table);
+	return ((DPDKDevice*)eth)->dpdk_set_rss_reta(v);
 }
 
 static int dpdk_eth_get_rss_reta_size(EthernetDevice* eth) {
 	return ((DPDKDevice*)eth)->dpdk_get_reta_size();
 }
 
-static Vector<unsigned> dpdk_eth_get_rss_reta(EthernetDevice* eth) {
-	return ((DPDKDevice*)eth)->dpdk_get_rss_reta();
+static std::vector<unsigned> dpdk_eth_get_rss_reta(EthernetDevice* eth) {
+    Vector<unsigned> reta = ((DPDKDevice*)eth)->dpdk_get_rss_reta();
+	std::vector<unsigned> ret;
+	ret.assign(reta.data(), reta.data() + ret.size());
+	return ret;
 }
 
-DPDKDevice::DPDKDevice() : port_id(-1), info(), EthernetDevice() {
+DPDKDevice::DPDKDevice() : info(), DPDKEthernetDevice() {
 	set_rss_reta = &dpdk_eth_set_rss_reta;
 	get_rss_reta = &dpdk_eth_get_rss_reta;
 	get_rss_reta_size = &dpdk_eth_get_rss_reta_size;
     assert(get_rss_reta_size);
+    this->port_id = -1;
 }
 
 DPDKDevice::DPDKDevice(portid_t port_id) : DPDKDevice() {

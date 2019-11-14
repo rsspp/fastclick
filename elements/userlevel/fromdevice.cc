@@ -68,9 +68,10 @@ CLICK_DECLS
 
 #define offset_of_base(base,derived,derived_member) ((unsigned char*)(&(reinterpret_cast<base *>(0)->derived_member)) - (unsigned char*)(base *)0)
 
-static int dev_eth_set_rss_reta(EthernetDevice* eth, const Vector<unsigned> &reta) {
+static int dev_eth_set_rss_reta(EthernetDevice* eth, unsigned* reta, unsigned reta_sz) {
 	FromDevice* fd = (FromDevice*)((unsigned char*)eth - offset_of_base(FromDevice,EthernetDevice,get_rss_reta_size));
-	return fd->dev_set_rss_reta(reta);
+	Vector<unsigned> r = Vector<unsigned>::from_c(reta_sz, reta);
+	return fd->dev_set_rss_reta(r);
 }
 
 static int dev_eth_get_rss_reta_size(EthernetDevice* eth) {
@@ -720,7 +721,7 @@ FromDevice::write_handler(const String &input, Element *e, void *thunk, ErrorHan
             Vector<unsigned> table;
             table.resize(fd->dev_get_rss_reta_size());
             for (int i = 0; i < table.size(); i++) {
-		table[i] = i % max;
+                table[i] = i % max;
             }
             return fd->dev_set_rss_reta(table);
         }
