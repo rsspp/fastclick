@@ -2,6 +2,7 @@
 #define LIBNICSCHEDULER_METHODRSS_HH 1
 
 #include <rte_ethdev.h>
+#include <rte_flow.h>
 
 class MethodRSS : public BalanceMethodDevice { public:
 
