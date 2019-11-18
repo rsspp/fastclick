@@ -68,7 +68,7 @@ void BalanceMethod::cpu_changed() {
 /**
  * Constructor for BlanceMethodDevice (the virtual base for all device-based methods)
  */
-BalanceMethodDevice::BalanceMethodDevice(NICScheduler* b, EthernetDevice* fd) : BalanceMethod(b) {
+BalanceMethodDevice::BalanceMethodDevice(NICScheduler* b, EthernetDevice* fd) : BalanceMethod(b), _fd(fd) {
     assert(_fd);
     assert(_fd->set_rss_reta);
     assert(_fd->get_rss_reta_size);

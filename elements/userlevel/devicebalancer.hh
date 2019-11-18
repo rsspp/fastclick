@@ -67,11 +67,16 @@ public:
     const char *port_count() const { return "0/0"; }
     const char *processing() const { return AGNOSTIC; }
 
+    int configure_phase() const {
+        return CONFIGURE_PHASE_PRIVILEGED + 5;
+    }
+
     bool can_live_reconfigure() const { return false; }
 
     int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     int initialize(ErrorHandler *) override CLICK_COLD;
     void add_handlers() override CLICK_COLD;
+
 
     void run_timer(Timer* t) override;
 
