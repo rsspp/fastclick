@@ -419,7 +419,7 @@ void MethodRSSPP::rebalance(std::vector<std::pair<int,float>> rload) {
             nunderloaded++;
         } else if (imbalance[i] < - _threshold) {
             if (load[i].nbuckets_nz == 0) {
-                click_chatter("WARNING : A core is overloaded but has no buckets !");
+                click_chatter("WARNING : Core %d is overloaded but has no buckets !", i);
             } else if (load[i].nbuckets_nz > 1) { //Else there is nothing we can do
                if (unlikely(balancer->verbose()))
                     click_chatter("Overloaded %d is cpu %d, imb %f, buckets %d",socket.oid.size(),i, imbalance[i],load[i].nbuckets_nz);

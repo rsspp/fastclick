@@ -39,8 +39,7 @@ CLICK_DECLS
 
 
 static int dpdk_eth_set_rss_reta(EthernetDevice* eth, unsigned* table, unsigned table_sz) {
-    Vector<unsigned> v = Vector<unsigned>::from_c(table_sz,table);
-	return ((DPDKDevice*)eth)->dpdk_set_rss_reta(v);
+	return ((DPDKDevice*)eth)->dpdk_set_rss_reta(table, table_sz);
 }
 
 static int dpdk_eth_get_rss_reta_size(EthernetDevice* eth) {
@@ -120,19 +119,19 @@ int DPDKDevice::dpdk_set_rss_max(int max)
 	return status;
 }
 
-int DPDKDevice::dpdk_set_rss_reta(const Vector<unsigned> &reta)
+int DPDKDevice::dpdk_set_rss_reta(unsigned* reta, unsigned reta_sz)
 {
-	struct rte_eth_rss_reta_entry64 reta_conf[reta.size() / RTE_RETA_GROUP_SIZE];
+	struct rte_eth_rss_reta_entry64 reta_conf[reta_sz / RTE_RETA_GROUP_SIZE];
     struct rte_eth_dev_info dev_info;
 
 	uint32_t i;
 	int status;
 	/* RETA setting */
 	memset(reta_conf, 0, sizeof(reta_conf));
-    for (i = 0; i < reta.size(); i++) {
+    for (i = 0; i < reta_sz; i++) {
 			reta_conf[i / RTE_RETA_GROUP_SIZE].mask = UINT64_MAX;
     }
-	for (i = 0; i < reta.size(); i++) {
+	for (i = 0; i < reta_sz; i++) {
 			uint32_t reta_id = i / RTE_RETA_GROUP_SIZE;
 			uint32_t reta_pos = i % RTE_RETA_GROUP_SIZE;
 			reta_conf[reta_id].reta[reta_pos] = reta[i];
@@ -140,7 +139,7 @@ int DPDKDevice::dpdk_set_rss_reta(const Vector<unsigned> &reta)
 	/* RETA update */
 	status = rte_eth_dev_rss_reta_update(port_id,
 			reta_conf,
-			reta.size());
+			reta_sz);
 	return status;
 }
 

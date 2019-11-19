@@ -173,7 +173,7 @@ public:
     const char *get_device_driver();
 
     int dpdk_set_rss_max(int max);
-    int dpdk_set_rss_reta(const Vector<unsigned> &reta);
+    int dpdk_set_rss_reta(unsigned* reta, unsigned reta_sz);
     int dpdk_get_reta_size() const;
     Vector<unsigned>  dpdk_get_rss_reta() const;
 

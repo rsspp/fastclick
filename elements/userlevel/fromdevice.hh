@@ -216,7 +216,7 @@ class FromDevice : public BatchElement, public EthernetDevice { public:
 
     void kernel_drops(bool& known, int& max_drops) const;
 
-    int dev_set_rss_reta(const Vector<unsigned> &reta);
+    int dev_set_rss_reta(unsigned *reta, unsigned reta_sz);
     int dev_get_rss_reta_size();
 
 

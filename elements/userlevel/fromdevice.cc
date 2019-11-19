@@ -70,8 +70,7 @@ CLICK_DECLS
 
 static int dev_eth_set_rss_reta(EthernetDevice* eth, unsigned* reta, unsigned reta_sz) {
 	FromDevice* fd = (FromDevice*)((unsigned char*)eth - offset_of_base(FromDevice,EthernetDevice,get_rss_reta_size));
-	Vector<unsigned> r = Vector<unsigned>::from_c(reta_sz, reta);
-	return fd->dev_set_rss_reta(r);
+	return fd->dev_set_rss_reta(reta, reta_sz);
 }
 
 static int dev_eth_get_rss_reta_size(EthernetDevice* eth) {
@@ -723,7 +722,7 @@ FromDevice::write_handler(const String &input, Element *e, void *thunk, ErrorHan
             for (int i = 0; i < table.size(); i++) {
                 table[i] = i % max;
             }
-            return fd->dev_set_rss_reta(table);
+            return fd->dev_set_rss_reta(table.data(), table.size());
         }
 		case h_reset_count:
 			fd->_count = 0;
@@ -766,7 +765,7 @@ FromDevice::dev_get_rss_reta_size()
 }
 
 int
-FromDevice::dev_set_rss_reta(const Vector<unsigned> &reta)
+FromDevice::dev_set_rss_reta(unsigned* reta, unsigned reta_sz)
 {
 	struct ethtool_rxfh rss_head = {0};
 	struct ethtool_rxfh *rss = NULL;
@@ -808,7 +807,7 @@ FromDevice::dev_set_rss_reta(const Vector<unsigned> &reta)
 	strcpy(ifr.ifr_name, _ifname.c_str());
 	err = ioctl(fd, SIOCETHTOOL, &ifr);
 
-	indir_bytes = reta.size() * entry_size;
+	indir_bytes = reta_sz * entry_size;
 
 
 	rss = (struct ethtool_rxfh*)calloc(1, sizeof(*rss) + indir_bytes + rss_head.key_size);
@@ -821,8 +820,8 @@ FromDevice::dev_set_rss_reta(const Vector<unsigned> &reta)
 	rss->rss_context = 0;
 	rss->hfunc = 0;
 	rss->key_size = 0;
-	rss->indir_size = reta.size();
-	for (i = 0; i < reta.size(); i++) {
+	rss->indir_size = reta_sz;
+	for (i = 0; i < reta_sz; i++) {
 		rss->rss_config[i] = reta[i];
 	}
 

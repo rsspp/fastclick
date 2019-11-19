@@ -136,13 +136,10 @@ class Vector {
 
     explicit inline Vector();
     explicit inline Vector(size_type n, value_argument_type v);
-
     inline Vector(const Vector<T> &x);
 #if HAVE_CXX_RVALUE_REFERENCES
     inline Vector(Vector<T> &&x);
 #endif
-
-    static inline Vector<T> from_c(size_type n, value_type* v);
 
     inline Vector<T> &operator=(const Vector<T> &x);
 #if HAVE_CXX_RVALUE_REFERENCES
@@ -212,15 +209,6 @@ template <typename T>
 inline Vector<T>::Vector(size_type n, value_argument_type v) {
     vm_.resize(n, array_memory_type::cast(&v));
 }
-
-/** @brief Construct a vector wrapping an array v of size n. There is no reference counting, the pointer must stay valid for the entire life of the Vector. */
-template <typename T>
-inline Vector<T> Vector<T>::from_c(size_type n, value_type* v) {
-    Vector<T> vec;
-    vec.vm_.assign(n, array_memory_type::cast(v));
-    return vec;
-}
-
 
 /** @brief Construct a vector as a copy of @a x. */
 template <typename T>
