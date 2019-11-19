@@ -68,7 +68,7 @@ void MethodRSSPP::rebalance(std::vector<std::pair<int,float>> rload) {
 #ifdef HAVE_BPF
     if (_counter_is_xdp) {
         click_chatter("Reading XDP table");
-        int cpus = balancer->_max_cpus;
+        int cpus = balancer->num_max_cpus();
         unsigned int nr_cpus = bpf_num_possible_cpus();
         uint64_t values[nr_cpus];
         for (uint32_t key = 0; key < _count.size(); key++) {
@@ -767,7 +767,7 @@ reagain:
     else {
 #ifdef HAVE_BPF
         click_chatter("Reseting XDP table");
-        int cpus = balancer->_max_cpus;
+        int cpus = balancer->num_max_cpus();
         unsigned int nr_cpus = bpf_num_possible_cpus();
         uint64_t values[nr_cpus] = {0};
         for (uint32_t key = 0; key < _count.size(); key++) {

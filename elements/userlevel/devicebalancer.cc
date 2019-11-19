@@ -55,6 +55,7 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
     String source;
     String cycles;
     int startcpu;
+    int max_cpus;
     bool havemax;
     Element* manager = 0;
     if (Args(this, errh).bind(conf)
@@ -63,7 +64,7 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
         .read_or_set("CORE_OFFSET", _core_offset, 0)
         .read_or_set("TIMER", _tick, 100)
         .read("TIMER_MAX", _tick_max).read_status(havemax)
-        .read_or_set("CPUS", _max_cpus, click_max_cpu_ids())
+        .read_or_set("CPUS", max_cpus, click_max_cpu_ids())
         .read_or_set("TARGET", target, "load")
         .read_or_set("STARTCPU", startcpu, -1)
         .read_or_set("UNDERLOAD", _underloaded_thresh, 0.25)
@@ -89,14 +90,14 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
     } else  if (cycles == "queue") {
         _load = LOAD_QUEUE;
     } else  if (cycles == "realcpu") {
-        _cpustats.resize(_max_cpus);
+        _cpustats.resize(max_cpus);
         _load = LOAD_REALCPU;
     } else {
         return errh->error("Unknown cycle method !");
     }
 
     if (startcpu == -1) {
-        startcpu = _max_cpus;
+        startcpu = max_cpus;
     }
 
     _startwith = startcpu;
@@ -171,10 +172,10 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
             rsspp->_counter = (AggregateCounterVector*)e->cast("AggregateCounterVector");
             if (!rsspp->_counter) {
     #ifdef HAVE_BPF
-                _counter = (XDPLoader*)e->cast("XDPLoader");
+                rsspp->_counter = (XDPLoader*)e->cast("XDPLoader");
     #endif
                 if (!rsspp->_counter) {
-                    return errh->error("COUNTER must be of the type AggregateCounterstd::vector or XDPLoader");
+                    return errh->error("COUNTER must be of the type AggregateCounterVector or XDPLoader");
                 }
                 rsspp->_counter_is_xdp = true;
             } else {
@@ -239,7 +240,7 @@ DeviceBalancer::initialize(ErrorHandler *errh) {
     for (int i = 0; i < startwith; i++) {
        _used_cpus.push_back(CpuInfo{.id= i,.last_cycles=0});
     }
-    for (int i = _max_cpus - 1; i >=startwith; i--) {
+    for (int i = num_max_cpus() - 1; i >=startwith; i--) {
        _available_cpus.push_back(i);
     }
     _timer.initialize(this);
@@ -328,7 +329,7 @@ DeviceBalancer::run_timer(Timer* t) {
             }
         }
     } else if (_load == LOAD_REALCPU) {
-        Vector<float> l(_max_cpus, 0);
+        Vector<float> l(num_max_cpus(), 0);
         unsigned long long totalUser, totalUserLow, totalSys, totalIdle, totalIoWait, totalIrq, totalSoftIrq;
         int cpuId;
         FILE* file = fopen("/proc/stat", "r");
@@ -350,8 +351,8 @@ DeviceBalancer::run_timer(Timer* t) {
         }
         fclose(file);
         for (int u = 0; u < _used_cpus.size(); u++) {
-        //click_chatter("Used %d load %f",u,l[u]);
-        int i = _used_cpus[u].id;
+            click_chatter("Used %d load %f",u,l[u]);
+            int i = _used_cpus[u].id;
             float cl = l[i];
             load.push_back(std::pair<int,float>{i,cl});
             totload += cl;
@@ -379,7 +380,7 @@ DeviceBalancer::run_timer(Timer* t) {
     }
 
     if (unlikely(_target == TARGET_BALANCE)) {
-        float target = totload / _max_cpus;
+        float target = totload / num_max_cpus();
         for (int i = 0; i < load.size(); i ++) {
             if (target < 0.1)
                 load[i].second = 0.5;

@@ -86,9 +86,6 @@ public:
     //The timer object, handling the tick call
     Timer _timer;
 
-    //Maximum number of CPUs
-    int _max_cpus;
-
     //The target method, usually load
     target_method _target;
 
@@ -108,12 +105,6 @@ public:
     };
     Vector<CPUStat> _cpustats;
 
-    /**
-     * @return the maximum number of CPUs allowed to be used
-     */
-	int max_cpus() {
-		return _max_cpus;
-	}
 
 	/**
      * Build a CpuInfo structure from a CPU id, using the current

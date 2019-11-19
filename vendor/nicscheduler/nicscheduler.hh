@@ -11,6 +11,7 @@
 #include <click/timestamp.hh>
 #include <click/numa.hh>
 #include "../../elements/analysis/aggcountervector.hh"
+#include "../../elements/userlevel/xdploader.hh"
 
 //NICScheduler library's includes
 #include "ethernetdevice.hh"
@@ -178,15 +179,22 @@ public:
     /**
      * @return the number of used CPUs
      */
-    int num_used_cpus() {
+    inline int num_used_cpus() {
         return _used_cpus.size();
     }
 
     /**
      * @return the number of sparce CPUs
      */
-    int num_spare_cpus() {
+    inline int num_spare_cpus() {
         return _available_cpus.size();
+    }
+
+    /**
+     * @return the maximum number of cpus
+     */
+    inline int num_max_cpus() {
+        return num_spare_cpus() + num_used_cpus();
     }
 
     /*
