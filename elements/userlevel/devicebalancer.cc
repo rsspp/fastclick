@@ -48,7 +48,6 @@ DeviceBalancer::~DeviceBalancer() {
 int
 DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
     Element* dev = 0;
-    String config;
     String method;
     String target;
     String load;
@@ -187,8 +186,8 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
     //Metron
     } else if (get_method()->name() == "metron") {
         MethodMetron* metron = static_cast<MethodMetron*>(get_method());
-        metron->_rules_file = config;
         if (Args(this, errh).bind(conf)
+                .read_or_set("CONFIG", metron->_rules_file, "")
                 .read_or_set("MIN_MOVEMENT", metron->_min_movement, 3)
                 .read_or_set("DEFLATION_FACTOR", metron->_deflation_factor, 2)
                 .consume() < 0)
