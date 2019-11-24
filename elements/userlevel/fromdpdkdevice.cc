@@ -424,8 +424,8 @@ void FromDPDKDevice::run_timer(Timer* t) {
     if (u > LOAD_UNIT)
         u = LOAD_UNIT;
 
-    thread_state->_useful += u;
-    thread_state->_useless += LOAD_UNIT - u;
+    _thread_state->_useful += u;
+    _thread_state->_useless += LOAD_UNIT - u;
     _fdstate->useful = 0;
 
     if (_fdstate->mustresched == 1) {
@@ -680,8 +680,9 @@ int FromDPDKDevice::write_handler(
                 fd->get_spawning_threads(b, true, -1);
                 if (fd->_active) { //Activating
                     fd->trigger_thread_reconfiguration(true,[fd,thunk](){
-                        for (int i = 0; i < fd->usable_threads.weight(); i++) {
-                            fd->_q_infos[i].task->reschedule();
+                        for (int i = 0; i < fd->_thread_state.weight(); i++) {
+                            if (fd->_thread_state.get_value(i).task)
+                                fd->_thread_state.get_value(i).task->reschedule();
                         }
                         for (int q = fd->firstqueue; q <= fd->lastqueue; q++) {
                             int i = fd->thread_for_queue(q);
@@ -691,8 +692,9 @@ int FromDPDKDevice::write_handler(
                     }, b);
                 } else { //Deactivating
                     fd->trigger_thread_reconfiguration(false,[fd](){
-                        for (int i = 0; i < fd->usable_threads.weight(); i++) {
-                            fd->_q_infos[i].task->unschedule();
+                        for (int i = 0; i < fd->_thread_state.weight(); i++) {
+                            if (fd->_thread_state.get_value(i).task)
+                                fd->_thread_state.get_value(i).task->unschedule();
                         }
 
                         for (int q = fd->firstqueue; q <= fd->lastqueue; q++) {
@@ -907,9 +909,9 @@ int FromDPDKDevice::reset_load_handler(
 {
 
     FromDPDKDevice *fd = static_cast<FromDPDKDevice *>(e);
-    for (unsigned int i = 0; i < fd->thread_state.weight(); i ++) {
-        fd->thread_state.get_value(i)._useless = 0;
-        fd->thread_state.get_value(i)._useful = 0;
+    for (unsigned int i = 0; i < fd->_thread_state.weight(); i ++) {
+        fd->_thread_state.get_value(i)._useless = 0;
+        fd->_thread_state.get_value(i)._useful = 0;
     }
     return 0;
 }

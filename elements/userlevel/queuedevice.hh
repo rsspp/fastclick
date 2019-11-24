@@ -39,7 +39,7 @@ protected:
 	int _burst; //Max size of burst
     struct QueueInfo {
         atomic_uint32_t lock;
-        Task*   task;
+        unsigned thread_id;
     } CLICK_CACHE_ALIGN;
     Vector<QueueInfo,CLICK_CACHE_LINE_SIZE> _q_infos;
 #define NO_LOCK 2
@@ -61,9 +61,6 @@ protected:
 
     int thread_share;
 
-    Vector<int> _thread_to_firstqueue;
-    Vector<int> _queue_to_thread;
-
     static int n_initialized; //Number of total elements configured
     static int n_elements; //Number of total elements heriting from QueueDevice
     static int n_inputs; //Number of total input
@@ -80,8 +77,10 @@ protected:
         long long unsigned _dropped;
         long long unsigned _useful;
         long long unsigned _useless;
+        Task*       task;
+        unsigned    first_queue_id;
     };
-    per_thread<ThreadState> thread_state;
+    per_thread<ThreadState> _thread_state;
 
     int _this_node; //Numa node index
 
@@ -128,15 +127,15 @@ protected:
                                     ErrorHandler *);
 
     inline void add_count(unsigned int n) {
-        thread_state->_count += n;
+        _thread_state->_count += n;
     }
 
     inline void set_dropped(long long unsigned n) {
-        thread_state->_dropped = n;
+        _thread_state->_dropped = n;
     }
 
     inline void add_dropped(unsigned int n) {
-        thread_state->_dropped += n;
+        _thread_state->_dropped += n;
     }
 
     bool get_spawning_threads(Bitvector& bmk, bool isoutput, int port);
@@ -156,11 +155,11 @@ protected:
     void cleanup_tasks();
 
     inline int queue_for_thread_begin(int tid) {
-        return _thread_to_firstqueue[tid];
+        return _thread_state.get_value_for_thread(tid).first_queue_id;
     }
 
     inline int queue_for_thread_end(int tid) {
-        int q =  _thread_to_firstqueue[tid] + queue_per_threads - 1;
+        int q =  _thread_state.get_value_for_thread(tid).first_queue_id + queue_per_threads - 1;
         if (unlikely(q > lastqueue))
             return lastqueue;
         return q;
@@ -177,9 +176,9 @@ protected:
 
     inline int id_for_thread(int tid) {
         if (likely(queue_per_threads == 1))
-            return _thread_to_firstqueue[tid] - firstqueue;
+            return queue_for_thread_begin(tid) - firstqueue;
         else
-            return (_thread_to_firstqueue[tid] - firstqueue) / queue_per_threads;
+            return (queue_for_thread_begin(tid) - firstqueue) / queue_per_threads;
     }
 
     inline int id_for_thread() {
@@ -187,19 +186,15 @@ protected:
     }
 
     inline Task* task_for_thread() {
-        return _q_infos[id_for_thread()].task;
+        return _thread_state->task;
     }
 
     inline Task* task_for_thread(int tid) {
-        return _q_infos[id_for_thread(tid)].task;
-    }
-
-    inline bool thread_for_queue_available() {
-        return !_queue_to_thread.empty();
+        return _thread_state.get_value_for_thread(tid).task;
     }
 
     inline int thread_for_queue(int queue) {
-        return _queue_to_thread[queue];
+        return _q_infos[queue].thread_id;
     }
 
     int thread_per_queues() {
