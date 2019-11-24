@@ -11,7 +11,9 @@
 #include <click/timestamp.hh>
 #include <click/numa.hh>
 #include "../../elements/analysis/aggcountervector.hh"
+#if HAVE_BPF
 #include "../../elements/userlevel/xdploader.hh"
+#endif
 
 //NICScheduler library's includes
 #include "ethernetdevice.hh"
