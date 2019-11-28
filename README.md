@@ -1,30 +1,29 @@
 # RSS++
 
 This repository is a modified version of FastClick that includes support for RSS++, a load and state-aware intra-server load-balancer.
-RSS++ works by tweaking NICs' RSS indirection tables. To do so, RSS++ monitors the load of each RSS bucket and solves an optimization problem to re-assign RSS buckets to different CPU cores. Moreover, RSS++ proposes a state migration algorithm to avoid synchronization problems when rebalancing.
+RSS++ works by tweaking NICs' RSS indirection tables. To do so, RSS++ monitors the load of each RSS bucket and solves an optimization problem to re-assign RSS buckets to different CPU cores. Moreover, RSS++ proposes a state migration algorithm to avoid synchronization problems while rebalancing.
 RSS++ can load-balance either FastClick applications or any socket application by attaching to XDP using BPF code and ethtool to change the indirection table. This is *NOT* Click in Kernel mode, it only uses standard APIs to communicate with the Kernel.
 
 ## NICScheduler library
-The heart of RSS++ is the NICScheduler library (vendor/nicscheduler/). The library implements the logic to "balance" packets from an input device according
-to the load of CPUs. The NICScheduler library provides multiple scheduling strategy, RSS++ is one of them.
+The heart of RSS++ is the NICScheduler library (vendor/nicscheduler/). This library implements the logic to "balance" packets from an input device according to the load of CPUs. The NICScheduler library provides multiple scheduling strategies, RSS++ is one of them.
 
-The library is included in FastClick's DeviceBalancer element, that use another element to read packets counters, and implements the logic to read the CPU load, and set NICScheduler's parameters, such as the balancing method. FastClick is also used as a proxy to reconfigure either a Linux interface, or a DPDK interface. Most dependencies to Click have been removed from the NICScheduler code, only a few utilities are left. Particularly, the Metron method is highly dependent to Click, and will only work under FastClick's directory.
+The library is included in FastClick's DeviceBalancer element, that uses another element to read packet counters and implements the logic to read the CPU load and set NICScheduler's parameters, such as the balancing method. FastClick is also used as a proxy to reconfigure either a Linux interface or a DPDK interface. Most dependencies to Click have been removed from the NICScheduler code, only a few utilities are left. Particularly, the Metron method is highly dependent to Click, and will only work under FastClick's directory.
 
 ## Building
 
 Note that if you only want to reproduce experiments, NPF can build RSS++ for you, so directly check the [experiments repo](https://github.com/rsspp/experiments) ;)
 
-One compiles RSS++ as FastClick, only with the 3 supplementary flags (at the end) :
+One compiles RSS++ as FastClick, only with the 3 supplementary flags (at the end):
 ```
 ./configure --enable-multithread --disable-linuxmodule --enable-intel-cpu --enable-user-multithread --verbose CFLAGS="-g -O3" CXXFLAGS="-g -std=gnu++11 -O3" --disable-dynamic-linking --enable-poll --enable-bound-port-transfer --enable-dpdk --enable-batch --with-netmap=no --enable-zerocopy --disable-dpdk-pool --disable-dpdk-packet --enable-flow --disable-task-stats --enable-cpu-load
 ```
-If you're only interested in Kernel mode (balancing your existing socket application), just remove all the "dpdk" stuffs in the line above (there are 3 options).
+If you're only interested in Kernel mode (balancing your existing socket application), just remove all the "dpdk" stuff in the line above (there are 3 options).
 
 ## Usage
 This section explains how to use RSS++.
 
 ### Daemon mode
-In daemon mode (sometimes refered to as  Kernel mode), no packets flow through Click, which is used as a daemon, much like irqbalance. The DeviceBalancer element, the core logic of RSS++, use a BPF program to count packets and reads them through BPF maps. According to the result of the optimization, the element will re-program the indirection table using the ethtool API.
+In daemon mode (sometimes refered to as  Kernel mode), no packets flow through Click, which is used as a daemon, much like irqbalance. The DeviceBalancer element, the core logic of RSS++, uses a BPF program to count packets and reads them through BPF maps. According to the result of the optimization, the element will re-program the NIC indirection table using the ethtool API.
 
 ```
 click -e 'define ($IF eth0,
@@ -77,47 +76,47 @@ Given that DPDK supports applications running as secondary processes (i.e., thos
 This section goes deeper into the implementation of NICScheduler.
 
 The heart of the NIC-driven scheduling library is the NICScheduler class ([vendor/nicscheduler/nicscheduler.hh](https://github.com/rsspp/fastclick/blob/mvendor/nicscheduler/nicscheduler.hh)).
-The NICScheduler class retains some parameters such as the underload and overloaded thresholds, the chosen balancing module (one of the class implementing BalanceMethod), the set of available and currently in used CPU cores, ...
+The NICScheduler class retains some parameters, such as the underload and overloaded thresholds, the chosen balancing module (one of the class implementing BalanceMethod), the set of available and currently used CPU cores, etc.
 
-One must call set_method(method, device), where method is one of the methods below. Device is an implementation of the EthernetDevice that allows to access some devices parameters and reprogram the reta table for the RSS based methods.
+One must call set_method(method, device), where method is one of the methods below. Device is an implementation of the EthernetDevice that allows to access some device parameters and reprogram the redirection table (RETA) table for the RSS based methods.
 
 ### Balancing module
-Each module is backed by a C++ class (metron is MethodMetron, RSS++/rsspp is MethodRSSPP, "rss" is MethodRSS, ...).
+Each module is backed by a C++ class (metron is MethodMetron, RSS++/rsspp is MethodRSSPP, rss is MethodRSS, etc.).
 
 #### MethodRSS
-This class sets up RSS indirection table as a normal driver would do, and the balancing periodic call is ignored. Therefore this is the classical RSS scharded approach.
+This class sets up RSS indirection table as a normal driver would do and the balancing periodic call is ignored. Therefore this is the classical RSS sharded approach.
 
 #### MethodRSSPP
-This class implements RSS++'s logic. It inherits MethodRSS but do not ignore the balancing call.
+This class implements RSS++'s logic. It inherits MethodRSS but does not ignore the balancing call.
 The code is documented and available at [vendor/nicscheduler/methods/rsspp.hh](https://github.com/rsspp/fastclick/blob/master/vendor/nicscheduler/methods/rsspp.hh).
-The various phase of the function work as follow:
+The various phases of the function work as follow:
  - Copy the packet counters if in BPF mode (value is directly accessed in DPDK mode).
- - Do a first pass over the load to counts the overloaded cores and compute the average load.
+ - Do a first pass over the load to count the overloaded cores and compute the average load.
  - Count the number of packets per core
  - If autoscale is enabled, remove or add a core according to the logic described in the paper. If a core is to be removed, an instance of BucketMapProblem is built and solved to move all buckets of the removed core to other cores. In that case the RSS table is rewritten and the function returns.
- - Then the CPUs are separated in two sets : overloaded and underloaded.
- - An instance of BucketMapTargetProblem  is built and solved, that realize the optimization described in the paper.
+ - Then, the CPUs are separated in two sets : overloaded and underloaded.
+ - An instance of BucketMapTargetProblem is built and solved in order to realize the optimization described in the paper.
  - If a move was performed, the table is written to the NIC.
 
 ### NIC programing
 The class is provided with an interface to the NIC through an implementation of the EthernetDevice class.
-Note that the RSS balancing elements may directly program the RSS table using the DPDK rte_flow API instead to overcome the limitation of Mellanox NICs mentioned in the paper.
+Note that the RSS balancing elements may directly program the RSS table using the DPDK rte_flow API to overcome the limitation of Mellanox NICs mentioned in the paper.
 
 ### State migration
-When the RSS++ method deviceds to migrate a group of flows (i.e., an RSS indirection bucket), it can call a function from a listener before and after migration, an implementation of the MigrationListener implementing some virtual functions. This is set up by calling the set_migration_listener() function.
+When the RSS++ method decides to migrate a group of flows (i.e., an RSS indirection bucket), it calls a function from a listener before and after migration, an implementation of the MigrationListener implementing some virtual functions. This is set up by calling the set_migration_listener() function.
 
 ## NICScheduler integration in FastClick
-The DeviceBalancer element ([elements/userlevel/devicebalancer.cc]
-This element periodically reads the load of a set of CPU cores using a method described by the "CYCLES" parameter, and then pass the load information to a balancing module. The balancing module is chosen using the "METHOD" parameter. The balancing module then programs the NIC through a common interface defined by the "DEV" argument.
+The DeviceBalancer element ([elements/userlevel/devicebalancer.cc].
+This element periodically reads the load of a set of CPU cores using a method described by the "CYCLES" parameter and then passes the load information to a balancing module. The balancing module is chosen using the "METHOD" parameter. The balancing module then programs the NIC through a common interface defined by the "DEV" argument.
 
 ### Balancing methode (METHOD)
 The value is simply passed to the NICScheduler library.
 
 ### CPU load (CYCLES)
-The "realcpu" CYCLES parameter will parse /proc/stat to get the current CPU load. "cycles" will use the proportion of useful cycles over useless cycles as described in the paper. "cyclesqueue" will do the same but when a CPU is overloaded, will use the size of the dedicated NIC queue on top of the number of cycles. The kernelmode should use "realcpu", while DPDK mode should use "cycles" or "cyclesqueue". The code is available in [elements/userlevel/devicebalancer.cc#L1578](https://github.com/rsspp/fastclick/blob/master/elements/userlevel/devicebalancer.cc#L1578).
+The "realcpu" CYCLES parameter will parse /proc/stat to get the current CPU load. "cycles" will use the proportion of useful cycles over useless cycles as described in the paper. "cyclesqueue" will do the same, but when a CPU is overloaded it will use the size of the dedicated NIC queue on top of the number of cycles. The kernel mode should use "realcpu", while DPDK mode should use "cycles" or "cyclesqueue". The code is available at [elements/userlevel/devicebalancer.cc#L1578](https://github.com/rsspp/fastclick/blob/master/elements/userlevel/devicebalancer.cc#L1578).
 
 ### Device proxy (DEV)
-It must be the name of another element that inherit the EthernetDevice class, currently only FromDevice or FromDPDKDevice. Both of these elements will implement two functions to program the NIC indirection table (set_rss_reta) and read its size for development purpose (get_rss_reta_size). FromDevice will use the standard ioctls to set it using the ethtool API ([elements/userlevel/fromdevice.cc#L768](https://github.com/rsspp/fastclick/blob/master/elements/userlevel/fromdevice.cc#L768)). The FromDPDKDevice elements will do the same using directly the DPDK interface ([lib/dpdkdevice.cc#L117](https://github.com/rsspp/fastclick/blob/master/lib/dpdkdevice.cc#L117))
+It must be the name of another element that inherits the EthernetDevice class, currently only FromDevice or FromDPDKDevice. Both of these elements will implement two functions to program the NIC indirection table (set_rss_reta) and read its size for development purpose (get_rss_reta_size). FromDevice will use the standard ioctls to set it using the ethtool API ([elements/userlevel/fromdevice.cc#L768](https://github.com/rsspp/fastclick/blob/master/elements/userlevel/fromdevice.cc#L768)). The FromDPDKDevice elements will do the same directly using the DPDK interface ([lib/dpdkdevice.cc#L117](https://github.com/rsspp/fastclick/blob/master/lib/dpdkdevice.cc#L117)).
 
 ### Flow manager (MANAGER)
 The FlowIPManager implements the MigrationManager. It uses the pre-migration and post-migration calls to receive such a message and start the migration process of the corresponding group table as explained in the paper. The previous example is augmented below to include such flow processing element:
@@ -132,11 +131,35 @@ FromDPDKDevice(..., RSS_AGGREGATE 1)
     
 balancer :: DeviceBalancer(DEV fd0, METHOD pianorss, VERBOSE 0, TIMER 100, CPUS $CPU, TARGET 0.75, STARTCPU -1, LOAD 0.90, RSSCOUNTER agg, AUTOSCALE 1, CYCLES realcpu, RETA_SIZE $RETA_SIZE, IMBALANCE_THRESHOLD 0.02, MANAGER flow);
 ```
-If a "MANAGER" (in this case FlowIPManager) is set up in DeviceBalancer, the RSS++ balancing module will call the `pre_migrate()` function of that element before writing the indirection table. And the `post_migrate()` function will be called afterwise. The pre_migrate function save the moves to be operated (migration of bucket tables from one core to another) to be operated when a new assignation is observed on any given core.
-The post_migrate functions will read the number of packets in the queue and set up the per-bucket trigger at which a migration is to be considered as done by the NIC. The code of the flow table itself strictly follows the migration process explained in the paper.
+If a "MANAGER" (in this case FlowIPManager) is set up in DeviceBalancer, the RSS++ balancing module will call the `pre_migrate()` function of that element before writing the indirection table. And the `post_migrate()` function will be called afterwards. The pre_migrate function saves the moves to be applied (migration of bucket tables from one core to another) to be operated when a new assignment is observed on any given core.
+The post_migrate function will read the number of packets in the queue and set up the per-bucket trigger at which a migration is to be considered as done by the NIC. The code of the flow table itself strictly follows the migration process explained in the paper.
 
 ## Parent's code
 Technically this repository is based on Metron's FastClick branch, supporting the paper of the same name (see README.metron.md) but this is only to compare against Metron, by using its flow parsing methods.
 
 ## Future plan
 All RSS++ specific code will be merged into mainline FastClick, at which point this repository will be closed.
+
+## Citing RSS++
+If you use RSS++ in your work, please cite our [paper][rsspp-paper]:
+```
+@inproceedings{barbette-rsspp.conext19,
+	author       = {Barbette, Tom and Katsikas, Georgios P. and Maguire Jr., Gerald Q. and Kosti\'{c}, Dejan},
+	title        = {{RSS++: load and state-aware receive side scaling}},
+	booktitle    = {Proceedings of the 15th International Conference on emerging Networking EXperiments and Technologies},
+	series       = {CoNEXT'19},
+	year         = {2019},
+	isbn         = {},
+  location     = {Orlando, Florida, USA},
+	pages        = {--},
+	numpages     = {16},
+	url          = {http://kth.diva-portal.org/smash/get/diva2:1371780/FULLTEXT01.pdf},
+  doi          = {},
+  acmid        = {},
+	publisher    = {ACM},
+  address      = {New York, NY, USA},
+  keywords     = {Load-balancing, intra server, state-aware, NIC indirection table.}
+}
+```
+
+[rsspp-paper]:http://kth.diva-portal.org/smash/get/diva2:1371780/FULLTEXT01.pdf
