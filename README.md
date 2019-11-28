@@ -150,15 +150,15 @@ If you use RSS++ in your work, please cite our [paper][rsspp-paper]:
 	series       = {CoNEXT'19},
 	year         = {2019},
 	isbn         = {},
-  location     = {Orlando, Florida, USA},
+	location     = {Orlando, Florida, USA},
 	pages        = {--},
 	numpages     = {16},
 	url          = {http://kth.diva-portal.org/smash/get/diva2:1371780/FULLTEXT01.pdf},
-  doi          = {},
-  acmid        = {},
+	doi          = {},
+	acmid        = {},
 	publisher    = {ACM},
-  address      = {New York, NY, USA},
-  keywords     = {Load-balancing, intra server, state-aware, NIC indirection table.}
+	address      = {New York, NY, USA},
+	keywords     = {Load-balancing, intra server, state-aware, NIC indirection table.}
 }
 ```
 
