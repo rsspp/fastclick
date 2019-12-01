@@ -44,10 +44,12 @@ AggregateCounterVector::configure(Vector<String> &conf, ErrorHandler *errh)
     uint32_t freeze_nnz, stop_nnz;
     uint32_t mask = (uint32_t)-1;
     uint64_t freeze_count, stop_count;
+    bool mark = false;
     String call_nnz, call_count;
 
     if (Args(conf, this, errh)
     .read_mp("MASK", mask)
+    .read("MARK", mark)
 	.read("BYTES", bytes)
 	.read("IP_BYTES", ip_bytes)
 	.read("MULTIPACKET", packet_count)
@@ -60,6 +62,7 @@ AggregateCounterVector::configure(Vector<String> &conf, ErrorHandler *errh)
     _use_packet_count = packet_count;
     _use_extra_length = extra_length;
     _mask = mask;
+    _mark = mark;
 
     _nodes.resize(mask + 1);
 
@@ -98,7 +101,10 @@ AggregateCounterVector::update_batch(PacketBatch *batch)
         if (agg == last_agg && n) {
 
         } else {
-            n = &find_node(last_agg);
+            bool outdated =false;
+            n = &find_node(last_agg,p,outdated);
+            if (outdated)
+                return true;
             if (!n)
                 return false;
             last_agg = agg;
@@ -131,8 +137,11 @@ AggregateCounterVector::update(Packet *p)
 
     // AGGREGATE_ANNO is already in host byte order!
     uint32_t agg = AGGREGATE_ANNO(p) & _mask;
-    Node &n = find_node(agg);
+    bool outdated = false;
+    Node &n = find_node(agg, p, outdated);
 
+    if (outdated)
+        return true;
     uint32_t amount;
     if (!_bytes)
 	amount = 1 + (_use_packet_count ? EXTRA_PACKETS_ANNO(p) : 0);
