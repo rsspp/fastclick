@@ -304,7 +304,7 @@ class BucketMapProblem
         imbalance.resize(ncpu);
     }
 
-    void solve() {
+    float solve() {
         typedef struct {
             int id;
             float load;
@@ -336,6 +336,12 @@ class BucketMapProblem
             cores.push(c);
         }
 
+        float total_imbalance = 0;
+        for (int i = 0; i < cores.size(); i++) {
+            total_imbalance += abs(cores.top().load);
+            cores.pop();
+        }
+        return total_imbalance;
     }
 
 private:
