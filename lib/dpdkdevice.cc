@@ -797,7 +797,7 @@ also                ETH_TXQ_FLAGS_NOMULTMEMP
     int err = rte_eth_dev_start(port_id);
     if (err < 0)
         return errh->error(
-            "Cannot start DPDK port %u: error %d", port_id, err);
+            "Cannot start DPDK port %u: error %d (DPDK error %d: %s)", port_id, err, rte_errno, rte_strerror(rte_errno));
 
     if (info.promisc)
         rte_eth_promiscuous_enable(port_id);
