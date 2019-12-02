@@ -173,10 +173,11 @@ class FlowDirector {
         static String FLOW_RULE_IDS_INT;
         static String FLOW_RULE_PACKET_HITS;
         static String FLOW_RULE_BYTE_COUNT;
-        static String FLOW_RULE_STATS;
         static String FLOW_RULE_AGGR_STATS;
         static String FLOW_RULE_LIST;
+        static String FLOW_RULE_LIST_WITH_HITS;
         static String FLOW_RULE_COUNT;
+        static String FLOW_RULE_ISOLATE;
         static String FLOW_RULE_FLUSH;
 
         // For debugging
@@ -239,6 +240,17 @@ class FlowDirector {
         };
         inline String rules_filename() { return _rules_filename; };
 
+        // Flow rules' isolation mode
+        static inline void set_isolation_mode(const portid_t &port_id, const bool &isolated) {
+            _isolated.insert(port_id, isolated);
+            if (_isolated[port_id]) {
+                flow_rules_isolate(port_id, 1);
+            } else {
+                flow_rules_isolate(port_id, 0);
+            }
+        };
+        static inline bool isolated(const portid_t &port_id) { return _isolated[port_id]; };
+
         // Calibrates flow rule cache before inserting new rules
         void calibrate_cache(const uint32_t *int_rule_ids, const uint32_t &rules_nb);
         void calibrate_cache(const HashMap<long, String> &rules_map);
@@ -292,7 +304,7 @@ class FlowDirector {
         void nic_and_cache_counts_agree();
 
         // Lists all NIC flow rules
-        String flow_rules_list();
+        String flow_rules_list(const bool only_matching_rules = false);
 
         // Lists all installed (internal + global flow rule IDs along with counters
         String flow_rule_ids_internal_counters();
@@ -358,12 +370,18 @@ class FlowDirector {
         // A low rule cache associated with the port of this Flow Director
         FlowCache *_flow_cache;
 
+        // Isolated mode guarantees that all ingress traffic comes from defined flow rules only (current and future)
+        static HashMap<portid_t, bool> _isolated;
+
         // Flow rule commands' parser
         static struct cmdline *_parser;
 
         // Map of ports to their rule installation/deletion statistics
         static HashMap<portid_t, Vector<RuleTiming>> _rule_inst_stats_map;
         static HashMap<portid_t, Vector<RuleTiming>> _rule_del_stats_map;
+
+        // Restrict ingress traffic to the defined flow rules
+        static int flow_rules_isolate(const portid_t &port_id, const int &set);
 
         // Pre-populate the supported matches and actions on relevant maps
         void populate_supported_flow_items_and_actions();

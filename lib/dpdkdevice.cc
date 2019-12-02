@@ -410,12 +410,13 @@ static String keep_token_left(String str, char delimiter)
 #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
 int DPDKDevice::set_mode(
         String mode, int num_pools, Vector<int> vf_vlan,
-        const String &rules_path, ErrorHandler *errh) {
+        const String &flow_rules_filename, ErrorHandler *errh)
 #else
 int DPDKDevice::set_mode(
         String mode, int num_pools, Vector<int> vf_vlan,
-        ErrorHandler *errh) {
+        ErrorHandler *errh)
 #endif
+{
     mode = mode.lower();
 
     enum rte_eth_rx_mq_mode m;
@@ -475,12 +476,13 @@ int DPDKDevice::set_mode(
     if (mode == FlowDirector::FLOW_DIR_MODE) {
         FlowDirector *flow_dir = FlowDirector::get_flow_director(port_id, errh);
         flow_dir->set_active(true);
-        flow_dir->set_rules_filename(rules_path);
+        flow_dir->set_rules_filename(flow_rules_filename);
         errh->message(
-            "Flow Director (port %u): State %s - Source file '%s'",
+            "Flow Director (port %u): State %s - Isolation Mode %s - Source file '%s'",
             port_id,
             flow_dir->active() ? "active" : "inactive",
-            rules_path.empty() ? "None" : rules_path.c_str()
+            FlowDirector::isolated(port_id) ? "active" : "inactive",
+            flow_rules_filename.empty() ? "None" : flow_rules_filename.c_str()
         );
     }
 #endif
@@ -787,20 +789,22 @@ also                ETH_TXQ_FLAGS_NOMULTMEMP
         }
     }
 
-    if (info.init_isolate) {
-        rte_flow_error error;
-        if (rte_flow_isolate(port_id, info.init_isolate, &error) != 0) {
-            return errh->error("Could not set flow isolation : %s", error.message );
-        }
+#if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
+    if (info.flow_isolate) {
+        FlowDirector::set_isolation_mode(port_id, true);
+    } else {
+        FlowDirector::set_isolation_mode(port_id, false);
     }
+#endif
 
     int err = rte_eth_dev_start(port_id);
-    if (err < 0)
-        return errh->error(
-            "Cannot start DPDK port %u: error %d", port_id, err);
+    if (err < 0) {
+        return errh->error("Cannot start DPDK port %u: error %d", port_id, err);
+    }
 
-    if (info.promisc)
+    if (info.promisc) {
         rte_eth_promiscuous_enable(port_id);
+    }
 
     if (info.init_mac != EtherAddress()) {
         struct rte_ether_addr addr;
@@ -829,7 +833,7 @@ also                ETH_TXQ_FLAGS_NOMULTMEMP
         }
         ret = rte_eth_dev_flow_ctrl_set(port_id, &conf);
         if (ret != 0)
-             return errh->error("Could not set flow control status !");
+             return errh->error("Could not set flow control status!");
     }
 
     if (info.mq_mode & ETH_MQ_RX_VMDQ_FLAG) {
@@ -894,7 +898,42 @@ also                ETH_TXQ_FLAGS_NOMULTMEMP
     }
 
     dev_conf.rxmode.offloads = rx_conf.offloads;
+#endif
 
+#if RTE_VERSION >= RTE_VERSION_NUM(17,11,0,0)
+    if (info.lro) {
+        if (!(dev_info.rx_offload_capa & DEV_RX_OFFLOAD_TCP_LRO)) {
+            return errh->error("Large Receive Offload (LRO) is not supported by this device!");
+        } else {
+            dev_conf.rxmode.offloads |= DEV_RX_OFFLOAD_TCP_LRO;
+        }
+        errh->message("Large Receive Offload (LRO): %s", (dev_conf.rxmode.offloads & DEV_RX_OFFLOAD_TCP_LRO) ? "enabled" : "disabled");
+    } else {
+        dev_conf.rxmode.offloads &= ~DEV_RX_OFFLOAD_TCP_LRO;
+    }
+#endif
+
+#if RTE_VERSION >= RTE_VERSION_NUM(17,11,0,0)
+    if (info.jumbo) {
+    #if RTE_VERSION >= RTE_VERSION_NUM(19,8,0,0)
+        unsigned int min_rx_pktlen = (unsigned int) RTE_ETHER_MIN_LEN;
+    #else
+        unsigned int min_rx_pktlen = (unsigned int) ETHER_MIN_LEN;
+    #endif
+        if (!(dev_info.rx_offload_capa & DEV_RX_OFFLOAD_JUMBO_FRAME)) {
+            return errh->error("Rx jumbo frame offload is not supported by this device!");
+        } else {
+            if (dev_conf.rxmode.max_rx_pkt_len > dev_info.max_rx_pktlen) {
+                return errh->error("Cannot perorm Rx jumbo frames offloading on port_id=%u: max_rx_pkt_len %u > max valid value %u\n", port_id, dev_conf.rxmode.max_rx_pkt_len, dev_info.max_rx_pktlen);
+            } else if (dev_conf.rxmode.max_rx_pkt_len < min_rx_pktlen) {
+                return errh->error("Cannot perorm Rx jumbo frames offloading on port_id=%u: max_rx_pkt_len %u < min valid value %u\n", port_id, dev_conf.rxmode.max_rx_pkt_len, min_rx_pktlen);
+            }
+            dev_conf.rxmode.offloads |= DEV_RX_OFFLOAD_JUMBO_FRAME;
+        }
+        errh->message("Rx jumbo frames offloading enabled on port_id=%u with max_rx_pkt_len %u in [%u, %u]\n", port_id, dev_conf.rxmode.max_rx_pkt_len, min_rx_pktlen, dev_info.max_rx_pktlen);
+    } else {
+        dev_conf.rxmode.offloads &= ~DEV_RX_OFFLOAD_JUMBO_FRAME;
+    }
 #endif
 
     return 0;
@@ -930,8 +969,8 @@ void DPDKDevice::set_tx_offload(uint64_t offload) {
     info.tx_offload |= offload;
 }
 
-void DPDKDevice::set_init_isolate(bool isolate) {
-    info.init_isolate = isolate;
+void DPDKDevice::set_flow_isolate(const bool &flow_isolate) {
+    info.flow_isolate = flow_isolate;
 }
 
 EtherAddress DPDKDevice::get_mac() {
@@ -985,19 +1024,19 @@ int DPDKDevice::add_queue(DPDKDevice::Dir dir, unsigned &queue_id,
 		if (info.rx_queues.size() > 0 && vlan_filter != info.vlan_filter)
 			return errh->error(
 					"Some elements disagree on whether or not device %u should"
-							" filter vlan tagged packets", port_id);
+							" filter VLAN tagged packets", port_id);
 		info.vlan_filter |= vlan_filter;
 
 		if (info.rx_queues.size() > 0 && vlan_strip != info.vlan_strip)
 			return errh->error(
 					"Some elements disagree on whether or not device %u should"
-							" strip vlan tagged packets", port_id);
+							" strip VLAN tagged packets", port_id);
 		info.vlan_strip |= vlan_strip;
 
         if (info.rx_queues.size() > 0 && vlan_extend != info.vlan_extend)
             return errh->error(
                     "Some elements disagree on whether or not device %u should"
-                            " extend vlan tagged packets via QinQ", port_id);
+                            " extend VLAN tagged packets via QinQ", port_id);
         info.vlan_extend |= vlan_extend;
 
         if (info.rx_queues.size() > 0 && lro != info.lro)
@@ -1287,7 +1326,6 @@ FlowControlModeArg::parse(
 
     return true;
 }
-
 
 String
 FlowControlModeArg::unparse(FlowControlMode mode) {

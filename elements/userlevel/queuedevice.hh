@@ -37,12 +37,22 @@ private :
 protected:
 
 	int _burst; //Max size of burst
+
+
+    #define NO_LOCK 2
+    /**
+     * Per-queue data structure. Have a lock per queue, when multiple thread
+     * can access the same queue, and a reference to a thread id serving this
+     * queue.
+     */
     struct QueueInfo {
+        QueueInfo() : thread_id(-1) {
+            lock = NO_LOCK;
+        }
         atomic_uint32_t lock;
         unsigned thread_id;
     } CLICK_CACHE_ALIGN;
     Vector<QueueInfo,CLICK_CACHE_LINE_SIZE> _q_infos;
-#define NO_LOCK 2
 
     Bitvector usable_threads;
     int queue_per_threads;
@@ -59,6 +69,7 @@ protected:
     // n_queues will be the final choice in [_minqueues, _maxqueues].
     int n_queues;
 
+    //Number of queues per threads, normally 1
     int thread_share;
 
     static int n_initialized; //Number of total elements configured
@@ -70,13 +81,17 @@ protected:
 
     static Vector<int> shared_offset; //Thread offset for each node
 
+    /**
+     * Per-thread state. Holds statistics, pointer to the per-thread task and id of the first queue
+     * to be served by this thread
+     */
     class ThreadState {
         public:
-        ThreadState() : _count(0), _dropped(0), _useful(0), _useless(0), task(0) {};
+        ThreadState() : _count(0), _useful(0), _useless(0), _dropped(0), first_queue_id(-1) {};
         long long unsigned _count;
-        long long unsigned _dropped;
         long long unsigned _useful;
         long long unsigned _useless;
+        long long unsigned _dropped;
         Task*       task;
         unsigned    first_queue_id;
     };
@@ -84,8 +99,12 @@ protected:
 
     int _this_node; //Numa node index
 
-    bool _active;
+    bool _active; //Is this element active
 
+    /**
+     * Attempt to take the per-queue lock
+     * @return true if taken
+     */
     inline bool lock_attempt() {
         if (_q_infos[id_for_thread()].lock.nonatomic_value() != NO_LOCK) {
             if (_q_infos[id_for_thread()].lock.swap((uint32_t)1) == (uint32_t)0)
@@ -98,6 +117,9 @@ protected:
         }
     }
 
+    /**
+     * Takes the per-queue lock
+     */
     inline void lock() {
         if (_q_infos[id_for_thread()].lock.nonatomic_value() != NO_LOCK) {
             while (_q_infos[id_for_thread()].lock.swap((uint32_t)1) != (uint32_t)0)
@@ -107,6 +129,9 @@ protected:
         }
     }
 
+    /**
+     * Release the per-queue lock
+     */
     inline void unlock() {
         if (_q_infos[id_for_thread()].lock.nonatomic_value() != NO_LOCK) {
             _q_infos[id_for_thread()].lock = (uint32_t)0;
