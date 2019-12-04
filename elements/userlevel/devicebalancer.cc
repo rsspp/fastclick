@@ -131,6 +131,7 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
         if (Args(this, errh).bind(conf)
                 //.read("VERIFIER", e)
                 .read_or_set("RETA_SIZE", rss->_reta_size, 128)
+                .read_or_set("MARK", rss->_use_mark, true)
                 .consume() < 0)
             return -1;
         /*if (e) {
