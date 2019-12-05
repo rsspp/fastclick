@@ -126,7 +126,7 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
 
     //RSS
     if (dynamic_cast<MethodRSS*>(get_method()) != 0) {
-        Element* e = 0;
+        //Element* e = 0;
         MethodRSS* rss = dynamic_cast<MethodRSS*>(get_method());
         if (Args(this, errh).bind(conf)
                 //.read("VERIFIER", e)

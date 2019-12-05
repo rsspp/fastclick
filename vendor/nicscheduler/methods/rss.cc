@@ -7,6 +7,10 @@ MethodRSS::MethodRSS(NICScheduler* b, EthernetDevice* fd) :
     _isolate(0), _use_group(true), _use_mark(false), _epoch(1) {
 }
 
+
+MethodRSS::~MethodRSS() {
+}
+
 int MethodRSS::initialize(ErrorHandler *errh, int startwith) {
     int reta = _fd->get_rss_reta_size(_fd);
     click_chatter("Actual reta size %d, target %d", reta, _reta_size);
@@ -155,11 +159,14 @@ inline rte_flow* flow_add_redirect(int port_id, int from, int to, bool validate,
         int res = 0;
         if (validate)
             res = rte_flow_validate(port_id, &attr, pattern.data(), action, &error);
-        if (!res) {
+        if (res == 0) {
             struct rte_flow *flow = rte_flow_create(port_id, &attr, pattern.data(), action, &error);
             click_chatter("Redirect from %d to %d success",from,to);
             return flow;
         } else {
+            if (validate) {
+                click_chatter("Rule did not validate.");
+            }
             return 0;
         }
 }
@@ -169,11 +176,11 @@ again:
     int port_id = ((DPDKEthernetDevice*)_fd)->port_id;
     if (validate && _use_group == 1) {
         click_chatter("Checking group support");
-        if (flow_add_redirect(port_id, 0,1, validate)) {
+        if (flow_add_redirect(port_id, 0,1, validate) != 0) {
             click_chatter("Using flow groups !");
             _flows.resize(3, 0);
         } else {
-            click_chatter("Could not create flow group rule. Will use rules on group 0.Error %d : %s",rte_errno,rte_strerror(rte_errno));
+            click_chatter("Could not create flow group rule. Will use rules on group 0. Error %d : %s",rte_errno,rte_strerror(rte_errno));
             _use_group = 0;
         }
     }
