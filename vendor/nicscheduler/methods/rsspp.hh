@@ -30,6 +30,32 @@ class MethodRSSPP : public MethodRSS, public LoadTracker { public:
     bool _dancer;
     bool _numa;
     int _numa_num;
+
+  private:
+    /**
+     * Class used to keep information about a core ad its load according to various metrics
+     */
+    class Load { public:
+
+        Load() : Load(-1) {
+
+        }
+
+        Load(int phys_id) : cpu_phys_id(phys_id), load(0), high(false), npackets(0), nbuckets(0), nbuckets_nz(0)  {
+
+        }
+        int cpu_phys_id;
+        float load;
+        bool high;
+        unsigned long long npackets;
+        unsigned nbuckets;
+        unsigned nbuckets_nz;
+    };
+
+    /* @brief apply a list of moves */
+    void apply_moves(std::function<int(int)> cpumap, std::vector<std::vector<std::pair<int,int>>> omoves, const Timestamp &begin);
+
+
 };
 
 #endif

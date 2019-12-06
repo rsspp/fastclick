@@ -4,7 +4,7 @@
 MethodRSS::MethodRSS(NICScheduler* b, EthernetDevice* fd) :
     BalanceMethodDevice(b,fd),
     //_verifier(0),
-    _isolate(0) {
+    _isolate(0), _use_group(true) {
 }
 
 int MethodRSS::initialize(ErrorHandler *errh, int startwith) {
@@ -32,7 +32,14 @@ int MethodRSS::initialize(ErrorHandler *errh, int startwith) {
 
         _rss_conf.rss_key = (uint8_t*)CLICK_LALLOC(128);
         _rss_conf.rss_key_len = 128; //This is only a max
-        rte_eth_dev_rss_hash_conf_get(port_id, &_rss_conf);
+        if (rte_eth_dev_rss_hash_conf_get(port_id, &_rss_conf) != 0) {
+            errh->warning("Could not get RSS configuration. Will use a default one.");
+            _rss_conf.rss_key_len = 40;
+            _rss_conf.rss_hf = ETH_RSS_IPV4 | ETH_RSS_NONFRAG_IPV4_TCP |ETH_RSS_NONFRAG_IPV4_UDP;
+            for (int i = 0; i < 40; i++)
+                _rss_conf.rss_key[i] = click_random();
+
+        }
 
 
         struct rte_flow_error error;
@@ -113,4 +120,193 @@ void MethodRSS::cpu_changed() {
         }
     }
     click_chatter("Post migration finished");
+}
+
+bool MethodRSS::update_reta_flow(bool validate) {
+        int port_id = ((DPDKEthernetDevice*)_fd)->port_id;
+        if (validate && _use_group == 1) {
+            click_chatter("Checking group support");
+
+            struct rte_flow_attr attr;
+            memset(&attr, 0, sizeof(struct rte_flow_attr));
+            attr.ingress = 1;
+
+            struct rte_flow_action action[2];
+            struct rte_flow_action_jump jump;
+
+
+            memset(action, 0, sizeof(struct rte_flow_action) * 2);
+            action[0].type = RTE_FLOW_ACTION_TYPE_JUMP;
+            action[0].conf = &jump;
+            action[1].type = RTE_FLOW_ACTION_TYPE_END;
+            jump.group=1;
+
+            std::vector<rte_flow_item> pattern;
+            rte_flow_item pat;
+            pat.type = RTE_FLOW_ITEM_TYPE_ETH;
+            pat.spec = 0;
+            pat.mask = 0;
+            pat.last = 0;
+            pattern.push_back(pat);
+            rte_flow_item end;
+            memset(&end, 0, sizeof(struct rte_flow_item));
+            end.type =  RTE_FLOW_ITEM_TYPE_END;
+            pattern.push_back(end);
+
+            struct rte_flow_error error;
+            int res = 0;
+            if (validate)
+            res = rte_flow_validate(port_id, &attr, pattern.data(), action, &error);
+            if (!res) {
+
+                struct rte_flow *flow = rte_flow_create(port_id, &attr, pattern.data(), action, &error);
+                if (flow) {
+                    click_chatter("Using flow groups!");
+                }
+                else {
+                    click_chatter("Could not create flow group rule. Will use rules on group 0.Error %d : %s",rte_errno,rte_strerror(rte_errno));
+                    _use_group = 0;
+                }
+            } else {
+                click_chatter("Group rule does not validate");
+                _use_group = 0;
+            }
+        }
+            struct rte_flow_attr attr;
+
+            std::vector<rte_flow*> newflows;
+
+             int tot;
+             if (_flows.size() == 1)
+                 tot = 2;
+             else
+                 tot = 1;
+             for (int i = 0; i < tot; i++) {
+                memset(&attr, 0, sizeof(struct rte_flow_attr));
+                attr.ingress = 1;
+                if (_use_group) {
+                    attr.group=1;
+                }
+
+                struct rte_flow_action action[2];
+                struct rte_flow_action_mark mark;
+                struct rte_flow_action_rss rss;
+
+                memset(action, 0, sizeof(action));
+                memset(&rss, 0, sizeof(rss));
+    /*
+                action[0].type = RTE_FLOW_ACTION_TYPE_MARK;
+                mark.id = _matches.size();
+                action[0].conf = &mark;
+*/
+int aid = 0;
+                    action[aid].type = RTE_FLOW_ACTION_TYPE_RSS;
+                    assert(_table.size() > 0);
+                    uint16_t queue[_table.size()];
+                    for (int i = 0; i < _table.size(); i++) {
+                        queue[i] = _table[i];
+                        assert(_table[i] >= 0);
+                        //click_chatter("%d->%d",i,_table[i]);
+                    }
+                    rss.types = _rss_conf.rss_hf;
+                    rss.key_len = _rss_conf.rss_key_len;
+                    rss.queue_num = _table.size();
+                    rss.key = _rss_conf.rss_key;
+                    rss.queue = queue;
+                    rss.level = 0;
+                    rss.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
+                    action[aid].conf = &rss;
+++aid;
+                action[aid].type = RTE_FLOW_ACTION_TYPE_END;
+++aid;
+
+                std::vector<rte_flow_item> pattern;
+                //Ethernet
+                /*
+                struct rte_flow_item_eth* eth = (struct rte_flow_item_eth*) malloc(sizeof(rte_flow_item_eth));
+                struct rte_flow_item_eth* mask = (struct rte_flow_item_eth*) malloc(sizeof(rte_flow_item_eth));
+                bzero(eth, sizeof(rte_flow_item_eth));
+                bzero(mask, sizeof(rte_flow_item_eth));*/
+                rte_flow_item pat;
+                pat.type = RTE_FLOW_ITEM_TYPE_ETH;
+               pat.spec = 0;
+               pat.mask = 0;
+               pat.last = 0;
+               pattern.push_back(pat);
+
+               pat.type = RTE_FLOW_ITEM_TYPE_IPV4;
+
+               if (tot == 2) {
+                   struct rte_flow_item_ipv4* spec = (struct rte_flow_item_ipv4*) malloc(sizeof(rte_flow_item_ipv4));
+                   struct rte_flow_item_ipv4* mask = (struct rte_flow_item_ipv4*) malloc(sizeof(rte_flow_item_ipv4));
+                   bzero(spec, sizeof(rte_flow_item_ipv4));
+                   bzero(mask, sizeof(rte_flow_item_ipv4));
+                   spec->hdr.dst_addr = i;
+                   mask->hdr.dst_addr = 1;
+                   pat.spec = spec;
+                   pat.mask = mask;
+               } else {
+                                   pat.spec = 0;
+                                   pat.mask = 0;
+               }
+
+                                   pat.last = 0;
+                                   pattern.push_back(pat);
+
+            rte_flow_item end;
+            memset(&end, 0, sizeof(struct rte_flow_item));
+            end.type =  RTE_FLOW_ITEM_TYPE_END;
+            pattern.push_back(end);
+
+            struct rte_flow_error error;
+            int res = 0;
+            if (validate)
+            res = rte_flow_validate(port_id, &attr, pattern.data(), action, &error);
+            if (!res) {
+
+                struct rte_flow *flow = rte_flow_create(port_id, &attr, pattern.data(), action, &error);
+                if (flow) {
+                if (unlikely(balancer->verbose()))
+                    click_chatter("Flow added succesfully with %d patterns!", pattern.size());
+                } else {
+                if (unlikely(balancer->verbose()))
+                    click_chatter("Could not add pattern with %d patterns, error %d : %s", pattern.size(),  res, error.message);
+                    return false;
+                }
+
+                newflows.push_back(flow);
+            } else {
+            if (unlikely(balancer->verbose()))
+                click_chatter("Could not validate pattern with %d patterns, error %d : %s", pattern.size(),  res, error.message);
+                return false;
+            }
+         }
+            while (!_flows.empty()) {
+            struct rte_flow_error error;
+            rte_flow_destroy(port_id,_flows.back(), &error);
+            _flows.pop_back();
+            }
+         _flows = newflows;
+         return true;
+
+}
+
+bool MethodRSS::update_reta(bool validate) {
+    Timestamp t = Timestamp::now_steady();
+    /*if (_verifier) {
+        _verifier->_table = _table;
+    }*/
+
+    if (_update_reta_flow) {
+        if (!update_reta_flow(validate))
+            return false;
+    } else {
+        if (!_fd->set_rss_reta(_fd, _table.data(), _table.size()))
+            return false;
+    }
+
+    Timestamp s = Timestamp::now_steady();
+    if (validate || balancer->verbose())
+    click_chatter("Reta updated in %d usec",(s-t).usecval());
+    return true;
 }
