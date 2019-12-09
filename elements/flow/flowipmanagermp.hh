@@ -68,6 +68,8 @@ protected:
     int _flow_state_size_full;
     int _verbose;
 
+    bool _lf;
+
     inline void process(Packet* p, BatchBuilder& b);
 
 };

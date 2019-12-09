@@ -15,7 +15,7 @@
 
 CLICK_DECLS
 
-FlowIPManagerMP::FlowIPManagerMP() : _verbose(1) {
+FlowIPManagerMP::FlowIPManagerMP() : _verbose(1), _lf(false) {
 
 }
 
@@ -29,7 +29,10 @@ FlowIPManagerMP::configure(Vector<String> &conf, ErrorHandler *errh)
 
     if (Args(conf, this, errh)
     		.read_or_set_p("CAPACITY", _table_size, 65536)
-            .read_or_set("RESERVE",_reserve, 0)
+            .read_or_set("RESERVE", _reserve, 0)
+#if RTE_VERSION >= RTE_VERSION_NUM(18,11,0,0)
+            .read_or_set("LF", _lf, false)
+#endif
             .complete() < 0)
         return -1;
 
@@ -67,7 +70,15 @@ int FlowIPManagerMP::solve_initialize(ErrorHandler *errh) {
 	hash_params.key_len = sizeof(IPFlow5ID);
 	hash_params.hash_func = ipv4_hash_crc;
 	hash_params.hash_func_init_val = 0;
-	hash_params.extra_flag = RTE_HASH_EXTRA_FLAGS_MULTI_WRITER_ADD | RTE_HASH_EXTRA_FLAGS_RW_CONCURRENCY; //| RTE_HASH_EXTRA_FLAGS_RW_CONCURRENCY_LF
+
+#if RTE_VERSION >= RTE_VERSION_NUM(18,11,0,0)
+    if (_lf) {
+	hash_params.extra_flag = RTE_HASH_EXTRA_FLAGS_MULTI_WRITER_ADD | RTE_HASH_EXTRA_FLAGS_RW_CONCURRENCY_LF;
+    } else
+#endif
+    {
+        hash_params.extra_flag = RTE_HASH_EXTRA_FLAGS_MULTI_WRITER_ADD | RTE_HASH_EXTRA_FLAGS_RW_CONCURRENCY;
+    }
 
 	_flow_state_size_full = sizeof(FlowControlBlock) + _reserve;
 
