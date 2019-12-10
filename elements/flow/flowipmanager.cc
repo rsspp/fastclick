@@ -73,7 +73,7 @@ int FlowIPManager::solve_initialize(ErrorHandler *errh) {
     hash_params.key_len = sizeof(IPFlow5ID);
     hash_params.hash_func = ipv4_hash_crc;
     hash_params.hash_func_init_val = 0;
-    hash_params.extra_flag = 0; //RTE_HASH_EXTRA_FLAGS_MULTI_WRITER_ADD | RTE_HASH_EXTRA_FLAGS_RW_CONCURRENCY; //| RTE_HASH_EXTRA_FLAGS_RW_CONCURRENCY_LF
+    hash_params.extra_flag = 0;
 
     _flow_state_size_full = sizeof(FlowControlBlock) + _reserve;
 
@@ -107,6 +107,8 @@ void FlowIPManager::cleanup(CleanupStage stage) {
 void FlowIPManager::pre_migrate(DPDKEthernetDevice* dev, int from, std::vector<std::pair<int,int>> gids) {
 	CoreInfo &coref = _cores.get_value_for_thread(from);
     coref.lock.acquire();
+    if (coref.pending != 0)
+        click_chatter("WARNING: Migrating a core already pending migration");
     for (int i = 0;i < gids.size(); i++) {
         coref.moves.push_back(gids[i]);
     }
@@ -244,8 +246,6 @@ void FlowIPManager::push_batch(int, PacketBatch* batch) {
     if (core.pending) {
         if (_mark) {
             if (epoch > core.watch) {
-
-
                     click_chatter("Migrating core %d because epoch %d -> %d",click_current_cpu_id(),core.watch,epoch);
                     do_migrate(core);
 
