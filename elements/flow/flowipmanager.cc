@@ -16,7 +16,7 @@
 
 CLICK_DECLS
 
-FlowIPManager::FlowIPManager() : _verbose(1), _tables(0), _groups(0), _def_thread(0), _mark(false) {
+FlowIPManager::FlowIPManager() : _verbose(1), _tables(0), _groups(0), _def_thread(0), _mark(false), _do_migration(true) {
 
 }
 
@@ -36,6 +36,7 @@ FlowIPManager::configure(Vector<String> &conf, ErrorHandler *errh)
             .read("DEF_THREAD", _def_thread)
             .read("VERBOSE", _verbose)
             .read("MARK", _mark)
+            .read("DO_MIGRATION", _do_migration)
             .complete() < 0)
         return -1;
 
@@ -267,7 +268,7 @@ void FlowIPManager::push_batch(int, PacketBatch* batch) {
     int last = -1;
     FOR_EACH_PACKET_SAFE(batch, p) {
         int groupid = AGGREGATE_ANNO(p) % _groups;
-            if (_tables[groupid].owner != click_current_cpu_id()) {
+            if (unlikely(_do_migration && _tables[groupid].owner != click_current_cpu_id())) {
                 //The owner is for the old CPU core
                 //We enter here as the migration has not been done
                 //Then, core "from" release the table and change owner
@@ -290,7 +291,7 @@ void FlowIPManager::push_batch(int, PacketBatch* batch) {
                     continue;
                 }
 
-                if (unlikely(_verbose > 2))
+                if (unlikely(_verbose > 1))
                     click_chatter("Packet of group %d pushed on core %d while %d still holds the lock", groupid, click_current_cpu_id(), _tables[groupid].owner);
 
                 if (_tables[groupid].queue) {
@@ -302,7 +303,7 @@ void FlowIPManager::push_batch(int, PacketBatch* batch) {
                 p->set_next(0);
 
             } else {
-                if (!core.pending) //While waiting for the new balancing to be written, we may receive packets of a table that we have to give to someone else, that is CURRENTLY enqueing
+                if (_do_migration && !core.pending) //While waiting for the new balancing to be written, we may receive packets of a table that we have to give to someone else, that is CURRENTLY enqueing
                     flush_queue(groupid, b); //This is a table for us. If there is a trailing queue (set by this same core before, we flush it)
 
                 process(groupid, p, b);

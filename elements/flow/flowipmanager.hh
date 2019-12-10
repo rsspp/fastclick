@@ -119,6 +119,7 @@ private:
     int _verbose;
     int _def_thread;
     bool _mark;
+    bool _do_migration;
 
     gtable* _tables;
     per_thread<CoreInfo> _cores;
