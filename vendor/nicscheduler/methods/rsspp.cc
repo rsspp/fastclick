@@ -66,7 +66,7 @@ inline void MethodRSSPP::apply_moves(std::function<int(int)> cpumap, std::vector
         Timestamp t = Timestamp::now_steady();
         auto v = (t-begin).usecval();
         if (unlikely(balancer->verbose() || v > 100))
-            click_chatter("Solution computed in %d usec", v);
+            click_chatter("Solution computed in %d usec, %d moves", v, omoves.size());
 
         update_reta();
         if (balancer->_manager) {
