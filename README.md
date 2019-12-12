@@ -1,6 +1,6 @@
 # RSS++
 
-This repository is a modified version of FastClick that includes support for RSS++, a load and state-aware intra-server load-balancer.
+This repository is a modified version of FastClick that includes support for [RSS++][rsspp-paper], a load and state-aware intra-server load-balancer.
 RSS++ works by tweaking NICs' RSS indirection tables. To do so, RSS++ monitors the load of each RSS bucket and solves an optimization problem to re-assign RSS buckets to different CPU cores. Moreover, RSS++ proposes a state migration algorithm to avoid synchronization problems while rebalancing.
 RSS++ can load-balance either FastClick applications or any socket application by attaching to XDP using BPF code and ethtool to change the indirection table. This is *NOT* Click in Kernel mode, it only uses standard APIs to communicate with the Kernel.
 
