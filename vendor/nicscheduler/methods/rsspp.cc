@@ -5,6 +5,7 @@
 #include "solver.hh"
 
 MethodRSSPP::MethodRSSPP(NICScheduler* b, EthernetDevice* fd) : MethodRSS(b,fd) {
+    _use_mark = true;
 }
 
 
@@ -537,7 +538,7 @@ void MethodRSSPP::rebalance(std::vector<std::pair<int,float>> rload) {
                 double c = get_node_count(j);
                 pm.buckets_load[i] = (((double) c / (double)load[b.cpu_id].npackets)*load[b.cpu_id].load);
                 pm.buckets_max_idx[i] = b.oid_id;
-                //click_chatter("Bucket %d (%d) load %f", i ,j, b);
+                //click_chatter("Bucket %d (%d) load %f, %d packets", i ,j, pm.buckets_load[i], (uint64_t)c);
             }
 
             for (int i = 0; i < uid.size(); i++) {

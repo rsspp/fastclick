@@ -118,6 +118,7 @@ private:
     int _flow_state_size_full;
     int _verbose;
     int _def_thread;
+    bool _mark;
 
     gtable* _tables;
     per_thread<CoreInfo> _cores;

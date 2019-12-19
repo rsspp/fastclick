@@ -1,6 +1,6 @@
 # RSS++
 
-This repository is a modified version of FastClick that includes support for RSS++, a load and state-aware intra-server load-balancer.
+This repository is a modified version of FastClick that includes support for [RSS++][rsspp-paper], a load and state-aware intra-server load-balancer.
 RSS++ works by tweaking NICs' RSS indirection tables. To do so, RSS++ monitors the load of each RSS bucket and solves an optimization problem to re-assign RSS buckets to different CPU cores. Moreover, RSS++ proposes a state migration algorithm to avoid synchronization problems while rebalancing.
 RSS++ can load-balance either FastClick applications or any socket application by attaching to XDP using BPF code and ethtool to change the indirection table. This is *NOT* Click in Kernel mode, it only uses standard APIs to communicate with the Kernel.
 
@@ -144,22 +144,22 @@ All RSS++ specific code will be merged into mainline FastClick, at which point t
 If you use RSS++ in your work, please cite our [paper][rsspp-paper]:
 ```
 @inproceedings{barbette-rsspp.conext19,
-	author       = {Barbette, Tom and Katsikas, Georgios P. and Maguire Jr., Gerald Q. and Kosti\'{c}, Dejan},
-	title        = {{RSS++: load and state-aware receive side scaling}},
-	booktitle    = {Proceedings of the 15th International Conference on emerging Networking EXperiments and Technologies},
-	series       = {CoNEXT'19},
-	year         = {2019},
-	isbn         = {},
-	location     = {Orlando, Florida, USA},
-	pages        = {--},
-	numpages     = {16},
-	url          = {http://kth.diva-portal.org/smash/get/diva2:1371780/FULLTEXT01.pdf},
-	doi          = {},
-	acmid        = {},
-	publisher    = {ACM},
-	address      = {New York, NY, USA},
-	keywords     = {Load-balancing, intra server, state-aware, NIC indirection table.}
+	author    = {Barbette, Tom and Katsikas, Georgios P. and Maguire,Jr., Gerald Q. and Kosti\'{c}, Dejan},
+	title     = {{RSS++: load and state-aware receive side scaling}},
+	booktitle = {Proceedings of the 15th International Conference on Emerging Networking Experiments And Technologies},
+	series    = {CoNEXT '19},
+	year      = {2019},
+	isbn      = {978-1-4503-6998-5},
+	location  = {Orlando, Florida},
+	pages     = {318--333},
+	numpages  = {16},
+	url       = {http://doi.acm.org/10.1145/3359989.3365412},
+	doi       = {10.1145/3359989.3365412},
+	acmid     = {3365412},
+	publisher = {ACM},
+	address   = {New York, NY, USA},
+	keywords  = {NIC indirection table, intra server, load-balancing, state-aware},
 }
 ```
 
-[rsspp-paper]:http://kth.diva-portal.org/smash/get/diva2:1371780/FULLTEXT01.pdf
+[rsspp-paper]:https://dl.acm.org/ft_gateway.cfm?id=3365412&ftid=2099399&dwn=1&CFID=117388292&CFTOKEN=f70f1ec24d3089b2-CBE9F99A-0D46-91B4-51B4F56D84A4B4D2

@@ -4,6 +4,9 @@
 #include <click/multithread.hh>
 #include <click/vector.hh>
 #include <click/pair.hh>
+#if HAVE_DPDK
+#include <rte_mbuf.h>
+#endif
 CLICK_DECLS
 class HandlerCall;
 
@@ -61,7 +64,7 @@ class AggregateCounterVector : public BatchElement { public:
     static int write_handler(const String &data, Element *e, void *thunk, ErrorHandler *errh);
     void add_handlers() CLICK_COLD;
 
-    inline Node& find_node(uint32_t agg);
+    inline Node& find_node(uint32_t agg, const Packet* p, bool &outdated);
     inline Node& find_node_nocheck(uint32_t agg);
     inline void read_values(Vector<uint64_t>& count);
     inline bool update(Packet *);
@@ -85,6 +88,7 @@ class AggregateCounterVector : public BatchElement { public:
     bool _use_packet_count : 1;
     bool _use_extra_length : 1;
     bool _active;
+    bool _mark;
 
     uint32_t _mask;
 
@@ -100,17 +104,36 @@ class AggregateCounterVector : public BatchElement { public:
  * @pre a is masked
  */
 inline AggregateCounterVector::Node&
-AggregateCounterVector::find_node(uint32_t a)
+AggregateCounterVector::find_node(uint32_t a, const Packet* p, bool &outdated)
 {
     Node& n = _nodes.unchecked_at(a);
-    if (n.epoch != _epoch) {
-		n.variance = n.variance / 3 + (n.count * 2 / 3);
-		n.count = 0;
-		n.epoch = _epoch;
+    uint32_t epoch;
+    if (_mark) {
+        struct rte_mbuf* p_mbuf;
+        p_mbuf = (struct rte_mbuf *) p->destructor_argument();
+
+        if (!(p_mbuf->ol_flags & PKT_RX_FDIR_ID))  {
+            click_chatter("WARNING : untagged packet");
+        }
+        epoch = p_mbuf->hash.fdir.hi;
+    } else {
+        epoch = _epoch;
+    }
+    if (n.epoch != epoch) {
+
+           // click_chatter("%d now at epoch %d (core %d)", a, epoch, click_current_cpu_id());
+
+        if (epoch < n.epoch) {
+            outdated = true;
+        } else {
+            n.variance = n.variance / 3 + (n.count * 2 / 3);
+            n.count = 0;
+            n.epoch = epoch;
 #if COUNT_FLOWS
-		n.flows = 0;
-		bzero(n.map,sizeof(n.map));
+            n.flows = 0;
+            bzero(n.map,sizeof(n.map));
 #endif
+        }
 
     }
     return n;

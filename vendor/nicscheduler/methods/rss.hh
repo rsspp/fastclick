@@ -7,6 +7,7 @@
 class MethodRSS : public BalanceMethodDevice { public:
 
     MethodRSS(NICScheduler* b, EthernetDevice* fd);
+    ~MethodRSS();
 
     int initialize(ErrorHandler *errh, int startwith) override CLICK_COLD;
     void rebalance(std::vector<std::pair<int,float>> load) override;
@@ -26,6 +27,8 @@ class MethodRSS : public BalanceMethodDevice { public:
     bool _isolate;
 
     bool _use_group;
+    bool _use_mark;
+    int _epoch;
 
     //RSSVerifier* _verifier;
 };

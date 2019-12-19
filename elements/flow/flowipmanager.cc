@@ -16,7 +16,7 @@
 
 CLICK_DECLS
 
-FlowIPManager::FlowIPManager() : _verbose(1), _tables(0), _groups(0), _def_thread(0) {
+FlowIPManager::FlowIPManager() : _verbose(1), _tables(0), _groups(0), _def_thread(0), _mark(false) {
 
 }
 
@@ -35,6 +35,7 @@ FlowIPManager::configure(Vector<String> &conf, ErrorHandler *errh)
             .read_or_set("RESERVE",_reserve, 0)
             .read("DEF_THREAD", _def_thread)
             .read("VERBOSE", _verbose)
+            .read("MARK", _mark)
             .complete() < 0)
         return -1;
 
@@ -114,6 +115,8 @@ void FlowIPManager::pre_migrate(DPDKEthernetDevice* dev, int from, std::vector<s
 
 
 void FlowIPManager::post_migrate(DPDKEthernetDevice* dev, int from) {
+    if (_mark)
+        return;
     int port_id = dev->get_port_id();
     int v = rte_eth_rx_queue_count(port_id, from);
 
@@ -210,7 +213,8 @@ void FlowIPManager::do_migrate(CoreInfo &core) {
     }
     core.moves.clear();
     core.pending = 0;
-    core.watch = 0;
+    if (!_mark)
+        core.watch = 0;
     core.lock.release();
 }
 
@@ -219,28 +223,72 @@ void FlowIPManager::push_batch(int, PacketBatch* batch) {
     BatchBuilder b;
     int count = batch->count();
 
-    core.count += count;
+
+        uint32_t epoch;
+        if (_mark) {
+            Packet* p = batch->first();
+            struct rte_mbuf* p_mbuf;
+            p_mbuf = (struct rte_mbuf *) p->destructor_argument();
+
+            if (!(p_mbuf->ol_flags & PKT_RX_FDIR_ID))  {
+                click_chatter("WARNING : untagged packet");
+            }
+            epoch = p_mbuf->hash.fdir.hi;
+        } else {
+
+                core.count += count;
+        }
+
 
     if (core.pending) {
-        if (core.watch > 0 && core.watch < core.count) { //If core watch is 0, post_migration has not run yet and the watch is invalid
+        if (_mark) {
+            if (epoch > core.watch) {
 
-            do_migrate(core);
+
+                    click_chatter("Migrating core %d because epoch %d -> %d",click_current_cpu_id(),core.watch,epoch);
+                    do_migrate(core);
+
+            }
+
+            if (epoch < core.watch) {
+                click_chatter("ERROR !!! Core %d is going backward", click_current_cpu_id());
+            }
+        } else {
+            if (core.watch > 0 && core.watch < core.count) { //If core watch is 0, post_migration has not run yet and the watch is invalid
+
+                do_migrate(core);
+            }
         }
     }
+
+    if (_mark)
+        core.watch = epoch;
 
     int last = -1;
     FOR_EACH_PACKET_SAFE(batch, p) {
         int groupid = AGGREGATE_ANNO(p) % _groups;
             if (_tables[groupid].owner != click_current_cpu_id()) {
-                //First : the owner is for the old CPU core
+                //The owner is for the old CPU core
                 //We enter here as the migration has not been done
                 //Then, core "from" release the table and change owner
                 //--> now we do not enter here anymore
                 //
                 //The table is not for us (it was moved in as only a core that actually saw a change can change the owner)
 
-                if (core.pending) //a new assignment has been seen ! Move our CPU if it wasn't done
-                    do_migrate(core);
+                //The following is useless: underloaded cores do not loose buckets
+                //                if (core.pending) //a new assignment has been seen ! Move our CPU if it wasn't done
+//                    do_migrate(core);
+//
+
+                CoreInfo& cored = _cores.get_value_for_thread(_tables[groupid].owner);
+                //Error : we received a packet for a table that is not pending migraiton. We probably have a few trailing packets, this can happen in rare cases when rx_queue_count() is lying
+                if (!cored.pending) {
+
+                    if (unlikely(_verbose > 0))
+                        click_chatter("Packet of group %d pushed on core %d while %d is already migrated", groupid, click_current_cpu_id(), _tables[groupid].owner);
+                    p->kill();
+                    continue;
+                }
 
                 if (unlikely(_verbose > 2))
                     click_chatter("Packet of group %d pushed on core %d while %d still holds the lock", groupid, click_current_cpu_id(), _tables[groupid].owner);
