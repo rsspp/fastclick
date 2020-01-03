@@ -105,6 +105,8 @@ public:
     };
     Vector<CPUStat> _cpustats;
 
+    //User provided number of maximum CPUs
+    unsigned _max_cpus;
 
 	/**
      * Build a CpuInfo structure from a CPU id, using the current

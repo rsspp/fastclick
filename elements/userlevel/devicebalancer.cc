@@ -77,6 +77,8 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
         .consume() < 0)
         return -1;
 
+    _max_cpus = max_cpus;
+
     if (!havemax)
         _tick_max = _tick;
 
@@ -241,7 +243,7 @@ DeviceBalancer::initialize(ErrorHandler *errh) {
     for (int i = 0; i < startwith; i++) {
        _used_cpus.push_back(CpuInfo{.id= i,.last_cycles=0});
     }
-    for (int i = num_max_cpus() - 1; i >=startwith; i--) {
+    for (int i = _max_cpus  - 1; i >=startwith; i--) {
        _available_cpus.push_back(i);
     }
     _timer.initialize(this);
