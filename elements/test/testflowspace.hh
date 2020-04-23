@@ -17,6 +17,9 @@ struct FourBytes {
 	uint32_t w;
 };
 
+/**
+ * Flow element that asks for 4 bytes
+ */
 class TestFlowSpace : public FlowSpaceElement<FourBytes> {
 
 public:

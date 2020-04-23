@@ -1,5 +1,5 @@
-#ifndef CLICK_FlowIPManagerHMPMP_HH
-#define CLICK_FlowIPManagerHMPMP_HH
+#ifndef CLICK_FLOWIPMANAGERHMP_HH
+#define CLICK_FLOWIPMANAGERHMP_HH
 #include <click/config.h>
 #include <click/string.hh>
 #include <click/timer.hh>
@@ -9,59 +9,53 @@
 #include <click/hashtablemp.hh>
 #include <click/pair.hh>
 #include <click/ipflowid.hh>
+#include <click/flow/flowelement.hh>
 #include <click/flow/common.hh>
-
+#include <click/timerwheel.hh>
 
 #include "../flow/flowipmanagermp.hh"
 
-
-
 CLICK_DECLS
 
-
+/**
+ * FlowIPManager based on the HashtableMP (hierarchical locked hashtable)
+ *
+ * @see also FlowIPManager
+ */
 class FlowIPManagerHMP: public VirtualFlowManager, Router::InitFuture {
-public:
 
+    public:
+        FlowIPManagerHMP() CLICK_COLD;
+        ~FlowIPManagerHMP() CLICK_COLD;
 
-    FlowIPManagerHMP() CLICK_COLD;
+        const char *class_name() const { return "FlowIPManagerHMP"; }
+        const char *port_count() const { return "1/1"; }
 
-	~FlowIPManagerHMP() CLICK_COLD;
+        int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
+        int initialize(ErrorHandler *errh) override CLICK_COLD;
+        int solve_initialize(ErrorHandler *errh) override CLICK_COLD;
+        void cleanup(CleanupStage stage) override CLICK_COLD;
 
-    const char *class_name() const		{ return "FlowIPManagerHMP"; }
-    const char *port_count() const		{ return "1/1"; }
+        //First : group id, second : destination cpu
+        void pre_migrate(DPDKDevice* dev, int from, Vector<Pair<int,int>> gids);
+        void post_migrate(DPDKDevice* dev, int from);
 
+        void push_batch(int, PacketBatch* batch) override;
 
-    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
-    int initialize(ErrorHandler *errh) override CLICK_COLD;
-    int solve_initialize(ErrorHandler *errh) override CLICK_COLD;
-    void cleanup(CleanupStage stage) override CLICK_COLD;
+        void init_assignment(Vector<unsigned> table);
 
-    //First : group id, second : destination cpu
-    void pre_migrate(DPDKDevice* dev, int from, Vector<Pair<int,int>> gids);
-    void post_migrate(DPDKDevice* dev, int from);
+    private:
+        HashTableMP<IPFlow5ID,int> _hash;
+        atomic_uint32_t _current;
 
+        inline void process(Packet* p, BatchBuilder& b);
 
-    void push_batch(int, PacketBatch* batch) override;
+        FlowControlBlock *fcbs;
 
-    void init_assignment(Vector<unsigned> table);
-
-private:
-
-
-    HashTableMP<IPFlow5ID,int> _hash;
-    atomic_uint32_t _current;
-
-    inline void process(Packet* p, BatchBuilder& b);
-
-    FlowControlBlock *fcbs;
-
-    int _table_size;
-    int _flow_state_size_full;
-    int _verbose;
-
+        int _table_size;
+        int _flow_state_size_full;
+        int _verbose;
 };
-
-
 
 CLICK_ENDDECLS
 #endif

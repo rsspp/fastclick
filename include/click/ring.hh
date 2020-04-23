@@ -7,8 +7,9 @@
 #if HAVE_DPDK
 # include <rte_ring.h>
 # include <rte_errno.h>
+# include <click/dpdk_glue.hh>
 #endif
-
+#include <type_traits>
 
 CLICK_DECLS
 
@@ -164,6 +165,7 @@ inline uint64_t next_pow2(uint64_t x) {
 	return x == 1 ? 1 : 1<<(64-__builtin_clzl(x-1));
 }
 
+
 /**
  * Ring with size set at initialization time
  */
@@ -189,7 +191,12 @@ template <typename T> class MPMCDynamicRing {
 
     inline T extract() {
         T o;
+
+#if RTE_VERSION >= RTE_VERSION_NUM(16,8,0,0)
         if (rte_ring_mc_dequeue_bulk(_ring, (void**)&o, 1, 0) == 0)
+#else
+        if (rte_ring_mc_dequeue_bulk(_ring, (void**)&o, 1) == 0)
+#endif
             return 0;
         else
             return o;

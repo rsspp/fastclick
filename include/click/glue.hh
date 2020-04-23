@@ -160,8 +160,8 @@ void click_lfree(volatile void *p, size_t size);
 # define CLICK_ALIGNED_NEW(T,n) (new T[n])
 # define CLICK_ALIGNED_DELETE(p,T,n) (delete[] p)
 #else
-# define CLICK_ALIGNED_NEW(T,n) ({T* v = (T*)CLICK_ALIGNED_ALLOC(sizeof(T) * n);for (unsigned i = 0; i < n; i++) {new(&v[i]) T();};v;})
-# define CLICK_ALIGNED_DELETE(p,T,n) {for (unsigned i = 0; i < n; i++) p[i].~T();CLICK_ALIGNED_FREE(p,sizeof(T)*n);}
+# define CLICK_ALIGNED_NEW(T,n) ({T* v = (T*)CLICK_ALIGNED_ALLOC(sizeof(T) * (n));for (unsigned i = 0; i < (n); i++) {new(&v[i]) T();};v;})
+# define CLICK_ALIGNED_DELETE(p,T,n) {for (unsigned i = 0; i < (n); i++) p[i].~T();CLICK_ALIGNED_FREE(p,sizeof(T)*(n));}
 #endif
 
 #define CLICK_ASSERT_ALIGNED(p) (assert(((intptr_t)p & (intptr_t)(CLICK_CACHE_LINE_SIZE - 1)) == 0))
@@ -169,6 +169,10 @@ void click_lfree(volatile void *p, size_t size);
 // RANDOMNESS
 
 CLICK_DECLS
+
+#if HAVE_DPDK
+extern bool dpdk_enabled;
+#endif
 
 /** @brief Return a number between 0 and CLICK_RAND_MAX, inclusive.
  *
@@ -747,15 +751,18 @@ click_get_cycles()
 #endif
 }
 
-#if HAVE_DPDK && !CLICK_TOOL
-#  define cycles_hz() rte_get_timer_hz()
-#else
 inline click_cycles_t cycles_hz() {
+#if HAVE_DPDK && !CLICK_TOOL
+    if (dpdk_enabled) {
+        return rte_get_timer_hz();
+    }
+    return 0;
+#else
     click_cycles_t tsc_freq = click_get_cycles();
     sleep(1);
     return click_get_cycles() - tsc_freq;
-}
 #endif
+}
 
 // Host to network order
 

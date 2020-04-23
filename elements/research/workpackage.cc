@@ -43,7 +43,7 @@ WorkPackage::configure(Vector<String> &conf, ErrorHandler *errh)
         .read_mp("R", _r) //Percentage of access that are packet read (vs Array access) between 0 and 100
         .read_mp("PAYLOAD", _payload) //Access payload or only header
         .read("W",_w) //Amount of call to random, purely CPU intensive fct
-		.read("ANALYSIS", _analysis)
+        .read("ANALYSIS", _analysis)
         .complete() < 0)
         return -1;
     _array.resize(s * 1024 * 1024 / sizeof(uint32_t));
@@ -57,7 +57,8 @@ WorkPackage::configure(Vector<String> &conf, ErrorHandler *errh)
 }
 
 void
-WorkPackage::rmaction(Packet* p, int &n_data) {
+WorkPackage::rmaction(Packet* p, int &n_data)
+{
 	click_cycles_t start;
 	if (_analysis) {
 		 start = click_get_cycles();
@@ -88,7 +89,8 @@ WorkPackage::rmaction(Packet* p, int &n_data) {
 
 #if HAVE_BATCH
 void
-WorkPackage::push_batch(int port, PacketBatch* batch) {
+WorkPackage::push_batch(int port, PacketBatch* batch)
+{
     int n_data = 0;
     FOR_EACH_PACKET(batch, p)
             rmaction(p,n_data);
@@ -97,7 +99,8 @@ WorkPackage::push_batch(int port, PacketBatch* batch) {
 #endif
 
 void
-WorkPackage::push(int port, Packet* p) {
+WorkPackage::push(int port, Packet* p)
+{
     int n_data = 0;
     rmaction(p,n_data);
     output_push(port, p);

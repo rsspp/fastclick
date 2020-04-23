@@ -105,6 +105,11 @@ LINK = $(CCLD) $(CFLAGS) $(LDFLAGS) -o $@
 
 USE_DPDK = @USE_DPDK@
 ifeq ($(USE_DPDK),yes)
+ifeq ($(shell pkg-config --exists libdpdk && echo 1), 1)
+CFLAGS := $(CFLAGS) $(shell pkg-config --cflags libdpdk)
+CXXFLAGS := $(CFLAGS) $(shell pkg-config --cflags libdpdk)
+LDFLAGS := $(LDFLAGS) $(shell pkg-config --libs libdpdk) -Wl,-Bstatic $(shell pkg-config --static --libs libdpdk)
+else
 RTE_SDK = @RTE_SDK@
 RTE_TARGET = @RTE_TARGET@
 RTE_VER_MAJOR = @RTE_VER_MAJOR@
@@ -112,7 +117,8 @@ RTE_VER_MINOR = @RTE_VER_MINOR@
 RTE_VER_YEAR = @RTE_VER_YEAR@
 RTE_VER_MONTH = @RTE_VER_MONTH@
 include dpdk.mk
-EXTRA_DRIVER_OBJS := dpdkdevice.o flowdirector.o flowdirectorparser.o servicechain.o $(EXTRA_DRIVER_OBJS)
+endif
+EXTRA_DRIVER_OBJS := dpdkdevice.o flowdispatcher.o flowdispatcherparser.o servicechain.o $(EXTRA_DRIVER_OBJS)
 endif
 
 ifndef MINDRIVER
@@ -140,7 +146,7 @@ ifneq ($(MAKECMDGOALS),clean)
 -include $(ELEMENTSCONF).mk
 endif
 
-# At of after DPDK 17.05, compile against an additional library librte_parse (flow director)
+# At of after DPDK 17.05, compile against an additional library librte_parse (flow dispatcher)
 ifeq ($(shell [ -n "$(RTE_VER_YEAR)" ] && ( ( [ "$(RTE_VER_YEAR)" -ge 17 ] && [ "$(RTE_VER_MONTH)" -ge 5 ] ) || [ $(RTE_VER_YEAR) -ge 18 ] ) && echo true),true)
 ddeps: Makefile librte_parse.a libclick.a $(OBJS)
 

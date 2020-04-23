@@ -1,32 +1,30 @@
 /**
  * A static Metron-like NIC offloading example.
  * Three NIC rules are offloaded, each dispatching matched packets
- * to one of the first 3 NIC queues.
- * Another 2 queues are used by RSS.
+ * to one of the first 3 NIC queues. Another 2 queues are used by RSS.
  */
 
 /**
  * Deploy as follows:
- * cd FASTCLICK_ROOT
- * sudo bin/click --dpdk -c 0xffff -v -- conf/metron/static-metron-rx-offloader.click
+ * sudo ../../bin/click --dpdk -l 0-4 -w 0000:03:00.0 -v -- dispatcher-flow-static.click queues=5
  */
 
 define(
-	$iface      0000:03:00.0,
+	$ifacePCI0  0000:03:00.0,
 	$queues     5,
 	$threads    $queues,
 	$numa       false,
-	$mode       flow_dir,
+	$mode       flow,          // DPDK's Flow API dispatcher
 	$verbose    99,
-	$rules      conf/metron/test_nic_rules
+	$rules      test_nic_rules
 );
 
 // NIC in Flow Director mode
 fd0 :: FromDPDKDevice(
-	PORT $iface, MODE $mode,
+	PORT $ifacePCI0, MODE $mode,
 	N_QUEUES $queues, NUMA $numa,
 	THREADOFFSET 0, MAXTHREADS $threads,
-	FLOW_DIR_RULES_FILE $rules,
+	FLOW_RULES_FILE $rules,
 	VERBOSE $verbose, PAUSE full
 );
 

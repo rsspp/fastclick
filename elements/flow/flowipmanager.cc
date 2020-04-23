@@ -1,5 +1,17 @@
 /*
- * FlowIPManager.{cc,hh}
+ * flowipmanager.{cc,hh} - Flow classification for the flow subsystem
+ *
+ * Copyright (c) 2019-2020 Tom Barbette, KTH Royal Institute of Technology
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, subject to the conditions
+ * listed in the Click LICENSE file. These conditions include: you must
+ * preserve this copyright notice, and you cannot mention the copyright
+ * holders in advertising related to the Software without their permission.
+ * The Software is provided WITHOUT ANY WARRANTY, EXPRESS OR IMPLIED. This
+ * notice is a summary of the Click LICENSE file; the license in that file is
+ * legally binding.
  */
 
 #include <click/config.h>
@@ -46,23 +58,6 @@ FlowIPManager::configure(Vector<String> &conf, ErrorHandler *errh)
     _fcb_builded_init_future.post(this);
 
     return 0;
-}
-
-static inline uint32_t
-ipv4_hash_crc(const void *data, __rte_unused uint32_t data_len,
-                uint32_t init_val)
-{
-        const IPFlow5ID *k;
-        uint32_t t;
-        const uint32_t *p;
-        k = (const IPFlow5ID *)data;
-        t = k->proto();
-        p = ((const uint32_t *)k) + 2;
-        init_val = rte_hash_crc_4byte(t, init_val);
-        init_val = rte_hash_crc_4byte(k->saddr(), init_val);
-        init_val = rte_hash_crc_4byte(k->daddr(), init_val);
-        init_val = rte_hash_crc_4byte(*p, init_val);
-        return init_val;
 }
 
 int FlowIPManager::solve_initialize(ErrorHandler *errh) {

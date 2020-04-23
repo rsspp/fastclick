@@ -1,7 +1,7 @@
 /**
  * Metron
  */
-#include "../../include/click/flowdirector.hh"
+#include "../../include/click/flowdispatcher.hh"
 
 String rewrite_id(String rule, int core) {
     int pos = rule.find_left("queue index");
@@ -13,14 +13,14 @@ String rewrite_id(String rule, int core) {
 int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
     if (!_is_dpdk)
         return errh->error("Metron only works with DPDK");
-    FlowDirector *flow_dir = FlowDirector::get_flow_director(((DPDKDevice*)_fd)->port_id);
+    FlowDispatcher *flow_dir = FlowDispatcher::get_flow_dispatcher(((DPDKDevice*)_fd)->port_id);
     assert(flow_dir);
 
-    // Invoke Flow Director only if active
+    // Invoke Flow Dispatcher only if active
     if (flow_dir->active()) {
         // There is a file with (user-defined) rules
         if (!_rules_file.empty()) {
-            HashMap<long, String> rules_map;
+            HashMap<uint32_t, String> rules_map;
             const String rules_str = (const String) flow_dir->load_rules_from_file_to_string(_rules_file);
 
             if (rules_str.empty()) {
@@ -34,7 +34,7 @@ int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
                 String rule = rules_vec[i] + "\n";
 
                 // Add rule to the map
-                rules_map.insert((long) i, rewrite_id(rule,i % startwith));
+                rules_map.insert(i, rewrite_id(rule,i % startwith));
             }
 
             int ret = flow_dir->update_rules(rules_map, true);
@@ -46,7 +46,7 @@ int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
         } else
             return errh->error("No rule file !");
     } else {
-        return errh->error("Flow director is not active.");
+        return errh->error("Flow dispatcher is not active.");
     }
 
 
@@ -66,7 +66,7 @@ int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
 }
 
 void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
-    FlowDirector *flow_dir = FlowDirector::get_flow_director(((DPDKDevice*)_fd)->port_id);
+    FlowDispatcher *flow_dir = FlowDispatcher::get_flow_dispatcher(((DPDKDevice*)_fd)->port_id);
     click_jiffies_t now = click_jiffies();
     std::vector<std::pair<int,float>> underloaded;
     std::vector<std::pair<int,float>> overloaded;
@@ -126,7 +126,7 @@ void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
         }
 
 
-        HashMap<long, String> * rmap;
+        HashMap<uint32_t, String> * rmap;
         rmap = cache->rules_map_by_core_id(o);
         int mig;
         if (_deflation_factor == 0) {
@@ -141,7 +141,7 @@ void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
         click_chatter("Migrating %d flows / %d flows", mig , rmap->size());
 
         std::vector<uint32_t> dlist;
-        HashMap<long, String> nmap;
+        HashMap<uint32_t, String> nmap;
 //      flow_dir->flow_cache()->delete_rule_by_global_id(rmap.keys());
 //      flow_dir->flow_cache()->
         unsigned n = 0;
@@ -152,7 +152,7 @@ void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
                 continue;
             }
 
-            long rule_id = it.key();
+            uint32_t rule_id = it.key();
             String rule = String(it.value());
 
 //            int intid = cache->internal_from_global_rule_id(rule_id);
@@ -194,9 +194,9 @@ void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
         balancer->removeCore(remove_i);
 //        click_chatter("Core %d is now available", remove_i);
 
-        HashMap<long, String> * rmap;
+        HashMap<uint32_t, String> * rmap;
 
-        HashMap<long, String> nmap;
+        HashMap<uint32_t, String> nmap;
         auto cache = flow_dir->get_flow_cache();
 
         rmap = cache->rules_map_by_core_id(remove_i);
@@ -207,7 +207,7 @@ void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
 
         auto it = rmap->begin();
         while (it != rmap->end()) {
-            long rule_id = it.key();
+            uint32_t rule_id = it.key();
             String rule = it.value();
 
             //int intid = cache->internal_from_global_rule_id(rule_id);

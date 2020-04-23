@@ -31,7 +31,7 @@
 #include <string>
 
 #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
-    #include <click/flowdirector.hh>
+    #include <click/flowdispatcher.hh>
 #endif
 
 CLICK_DECLS

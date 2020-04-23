@@ -36,6 +36,7 @@ public:
     virtual bool stopClassifier() { return false; };
 };
 
+
 /**
  * Element that needs FCB space
  */

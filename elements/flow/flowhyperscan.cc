@@ -1,25 +1,8 @@
 /*
- * FlowHyperScan.{cc,hh}
- */
-
-#include <click/config.h>
-#include <click/glue.hh>
-#include <click/args.hh>
-#include <click/flow/flow.hh>
-#include "flowhyperscan.hh"
-
-CLICK_DECLS
-
-FlowHyperScan::FlowHyperScan() {
-    _scratch = 0;
-};
-
-FlowHyperScan::~FlowHyperScan() {
-
-}
-
-
-/*
+ * FlowHyperScan.{cc,hh} Flow-based IDS using the HyperScan library
+ *
+ * This file integrates some code taken from the hyperscan helper, the license for that code is:
+ *
  * Copyright (c) 2015-2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,11 +28,39 @@ FlowHyperScan::~FlowHyperScan() {
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ *
+ * The rest of the code is using the usual Click license :
+ *
+ * Copyright (c) 2019-2020 Tom Barbette, KTH Royal Institute of Technology
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, subject to the conditions
+ * listed in the Click LICENSE file. These conditions include: you must
+ * preserve this copyright notice, and you cannot mention the copyright
+ * holders in advertising related to the Software without their permission.
+ * The Software is provided WITHOUT ANY WARRANTY, EXPRESS OR IMPLIED. This
+ * notice is a summary of the Click LICENSE file; the license in that file is
+ * legally binding.
  */
 
-// helper function - see end of file
-//static void parseFile(const char *filename, Vector<String> &patterns,
-        //Vector<unsigned> &flags, Vector<unsigned> &ids);
+#include <click/config.h>
+#include <click/glue.hh>
+#include <click/args.hh>
+#include <click/flow/flow.hh>
+#include "flowhyperscan.hh"
+
+CLICK_DECLS
+
+FlowHyperScan::FlowHyperScan()
+{
+    _scratch = 0;
+};
+
+FlowHyperScan::~FlowHyperScan()
+{
+
+}
 
 static hs_database_t *buildDatabase(const Vector<const char *> &expressions,
                                     const Vector<unsigned> flags,
@@ -62,10 +73,8 @@ static hs_database_t *buildDatabase(const Vector<const char *> &expressions,
         click_chatter("Pattern '%s'", expressions[i]);
     }
 
-
     err = hs_compile_multi(expressions.data(), flags.data(), ids.data(),
                            expressions.size(), mode, nullptr, &db, &compileErr);
-
 
     if (err != HS_SUCCESS) {
         if (compileErr->expression < 0) {
@@ -87,7 +96,8 @@ static hs_database_t *buildDatabase(const Vector<const char *> &expressions,
 
 /*
 static void parseFile(const char *filename, vector<string> &patterns,
-                      vector<unsigned> &flags, vector<unsigned> &ids) {
+                      vector<unsigned> &flags, vector<unsigned> &ids)
+{
     ifstream inFile(filename);
     if (!inFile.good()) {
         cerr << "ERROR: Can't open pattern file \"" << filename << "\"" << endl;
@@ -136,7 +146,8 @@ static void parseFile(const char *filename, vector<string> &patterns,
 */
 
 bool
-FlowHyperScan::is_valid_patterns(Vector<String> &patterns, ErrorHandler *errh) {
+FlowHyperScan::is_valid_patterns(Vector<String> &patterns, ErrorHandler *errh)
+{
     Vector<const char*> test_set;
     Vector<String> test_set_memory;
     Vector<unsigned> flags;
@@ -205,8 +216,8 @@ FlowHyperScan::configure(Vector<String> &conf, ErrorHandler *errh)
     return 0;
 }
 
-
-int FlowHyperScan::initialize(ErrorHandler *errh) {
+int FlowHyperScan::initialize(ErrorHandler *errh)
+{
 /*    hs_error_t err = hs_alloc_scratch(db_streaming, &_scratch);
     if (err != HS_SUCCESS) {
         return errh->error("ERROR: could not allocate scratch space. Error %d",err);
@@ -228,22 +239,24 @@ int FlowHyperScan::initialize(ErrorHandler *errh) {
 // Match event handler: called every time Hyperscan finds a match.
 static
 int onMatch(unsigned int id, unsigned long long from, unsigned long long to,
-            unsigned int flags, void *ctx) {
+            unsigned int flags, void *ctx)
+{
     // Our context points to a size_t storing the match count
     size_t *matches = (size_t *)ctx;
     (*matches)++;
     return 0; // continue matching
 }
 
-void FlowHyperScan::push_batch(int port, FlowHyperScanState* flowdata, PacketBatch* batch) {
+void FlowHyperScan::push_batch(int port, FlowHyperScanState* flowdata, PacketBatch* batch)
+{
     if (!flowdata->stream) {
-
         hs_error_t err = hs_open_stream(db_streaming, 0, &flowdata->stream);
         if (err) {
             click_chatter("Cannot alloc stream!");
             goto err;
         }
     }
+
     FOR_EACH_PACKET(batch, p) {
         if (p->length() == 0) continue;
         size_t matchCount = 0;

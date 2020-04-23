@@ -370,7 +370,7 @@ RouterThread::run_tasks(int ntasks)
     want_status.is_strong_unscheduled = false;
 
     Task *t;
-#if HAVE_MULTITHREAD
+#if HAVE_TASK_STATS
     int runs;
 #endif
     bool work_done;

@@ -193,8 +193,6 @@ else
     LIBS="$save_libs"
 fi
 
-AC_SEARCH_LIBS([elf_version], [elf], [ac_have_elf=yes], [ac_have_elf=no])
-
 AC_SEARCH_LIBS([bpf_prog_load_xattr], [bpf], [ac_have_libbpf=yes], [ac_have_libbpf=no])
 AC_CHECK_HEADERS([bpf/bpf.h], [ac_have_libbpf_h=yes], [ac_have_libbpf_h=no])
 if test "x$ac_have_libbpf$ac_have_libbpf_h" = "xyesyes"; then
@@ -204,10 +202,21 @@ else
     have_libbpf=no
 fi
 
+AC_SEARCH_LIBS([curl_global_init], [curl], [ac_have_curl=yes], [ac_have_curl=no])
+AC_CHECK_HEADERS([curl/curl.h], [ac_have_curl_h=yes], [ac_have_curl_h=no])
+if test "$ac_have_curl$ac_have_curl_h" = yesyes; then
+    AC_DEFINE([HAVE_CURL])
+fi
+
+AC_SEARCH_LIBS([elf_version], [elf], [ac_have_elf=yes], [ac_have_elf=no])
+
 AC_SEARCH_LIBS([MHD_start_daemon], [microhttpd], [ac_have_libmicrohttpd=yes], [ac_have_libmicrohttpd=no])
 AC_CHECK_HEADERS([microhttpd.h], [ac_have_microhttpd_h=yes], [ac_have_microhttpd_h=no])
 if test "x$ac_have_libmicrohttpd$ac_have_microhttpd_h" = "xyesyes"; then
+    have_httpd=yes
     AC_DEFINE([HAVE_MICROHTTPD])
+else
+    have_httpd=no
 fi
 
 AC_CHECK_LIB([re2], [main], [ac_have_re2=yes], [ac_have_re2=no])
@@ -239,11 +248,14 @@ else
     have_papi=no
 fi
 
-
-AC_SEARCH_LIBS([curl_global_init], [curl], [ac_have_curl=yes], [ac_have_curl=no])
-AC_CHECK_HEADERS([curl/curl.h], [ac_have_curl_h=yes], [ac_have_curl_h=no])
-if test "$ac_have_curl$ac_have_curl_h" = yesyes; then
-    AC_DEFINE([HAVE_CURL])
+AC_ARG_ENABLE([json],
+    [AS_HELP_STRING([  --enable-json], [enable JSON support])],
+    [:], [enable_json=no])
+if test "x$enable_json" = "xyes"; then
+    have_json=yes
+    AC_DEFINE([HAVE_JSON])
+else
+    have_json=no
 fi
 
 
@@ -311,8 +323,8 @@ if test "x$enable_dpdk" = "xyes"; then
 
 
     if pkg-config --exists libdpdk ; then
-        AC_MSG_NOTICE([Metron is not yet compatible with pkgconfig-based DPDK installation. $RTE_SDK will be used.])
-    fi
+      RTE_LIB=pkg-config --variable=libdir libdpdk
+    else
       RTE_LIB="$RTE_SDK_BIN/lib"
       if test ! -f "$RTE_SDK_BIN/include/rte_eal.h"; then
         AC_MSG_ERROR([
@@ -350,6 +362,7 @@ or install DPDK using meson, or he system package manager.
       else
         AC_MSG_RESULT([no])
       fi
+    fi
 
     AC_DEFINE([HAVE_DPDK])
     AC_SUBST(USE_DPDK, yes)
@@ -2497,16 +2510,16 @@ Configuration Summary:
     C Compiler:                  ${CC}
     C++ Compiler:                ${CXX}
 
-    DPDK support:                ${enable_dpdk}
+    DPDK   support:              ${enable_dpdk}
     Netmap support:              ${HAVE_NETMAP}
-    PCAP support:                ${have_pcap}
+    PCAP   support:              ${have_pcap}
 
     Metron support:              ${have_metron}
-    RSS++ support:               ${enable_cpu_load}
+    RSS++  support:              ${enable_cpu_load}
 
-    PAPI support:                ${have_papi}
-    RE2 support:                 ${have_re2}
-    BPF support:                 ${have_libbpf}
+    PAPI   support:              ${have_papi}
+    RE2    support:              ${have_re2}
+    BPF    support:              ${have_libbpf}
 "
 
 if test "x$enable_cpu_load" != "xyes"; then

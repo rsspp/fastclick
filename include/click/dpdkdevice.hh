@@ -23,7 +23,7 @@
 #include <rte_version.h>
 
 #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
-    #include <click/flowdirectorglue.hh>
+    #include <click/flowdispatcherglue.hh>
 #endif
 
 #if RTE_VERSION >= RTE_VERSION_NUM(17,11,0,0) && RTE_VERSION < RTE_VERSION_NUM(19,2,0,0)
@@ -152,7 +152,7 @@ public:
     };
 
 #if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
-    void initialize_flow_director(
+    void initialize_flow_dispatcher(
         const portid_t &port_id,
         ErrorHandler   *errh
     );
@@ -189,7 +189,7 @@ public:
 
     int dpdk_set_rss_max(int max);
     int dpdk_set_rss_reta(unsigned* reta, unsigned reta_sz);
-    int dpdk_get_reta_size() const;
+    int dpdk_get_rss_reta_size() const;
     Vector<unsigned>  dpdk_get_rss_reta() const;
 
     EthernetDevice* get_eth_device();

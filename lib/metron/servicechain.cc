@@ -76,7 +76,7 @@ ClickSCManager::run_service_chain(ErrorHandler *errh)
 {
     ServiceChain *sc = _sc;
 
-    for (int i = 0; i < sc->get_nics_nb(); i++) {
+    for (unsigned i = 0; i < (unsigned) sc->get_nics_nb(); i++) {
         if (sc->rx_filter->apply(sc->get_nic_by_index(i), errh) != 0) {
             return errh->error("Could not apply Rx filter");
         }
@@ -105,8 +105,7 @@ ClickSCManager::run_service_chain(ErrorHandler *errh)
         Vector<String> argv = build_cmd_line(ctl_socket[1]);
 
         char *argv_char[argv.size() + 1];
-        for (int i = 0; i < argv.size(); i++) {
-            // click_chatter("Cmd line arg: %s", argv[i].c_str());
+        for (unsigned i = 0; i < (unsigned) argv.size(); i++) {
             argv_char[i] = strdup(argv[i].c_str());
         }
         argv_char[argv.size()] = 0;
@@ -120,16 +119,9 @@ ClickSCManager::run_service_chain(ErrorHandler *errh)
         close(config_pipe[0]);
         close(ctl_socket[1]);
         int flags = 1;
-        /*int fd = ctl_socket[0];
-        if (ioctl(fd, FIONBIO, &flags) != 0) {
-            flags = fcntl(fd, F_GETFL);
-            if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
-                return errh->error("%s", strerror(errno));
-        }
-        */
-        String conf = sc->generate_configuration(add_extra);
 
-        click_chatter("Writing configuration %s", conf.c_str());
+        String conf = sc->generate_configuration(add_extra);
+        click_chatter("Writing configuration: %s", conf.c_str());
 
         int pos = 0;
         while (pos != conf.length()) {
@@ -180,7 +172,7 @@ ClickSCManager::activate_core(int new_cpu_id, ErrorHandler *errh)
 {
     int ret = 0;
     String response = "";
-    for (int inic = 0; inic < metron()->get_nics_nb(); inic++) {
+    for (unsigned inic = 0; inic < metron()->get_nics_nb(); inic++) {
         ret = call_write(
             _sc->generate_configuration_slave_fd_name(
                 inic, _sc->get_cpu_phys_id(new_cpu_id)
@@ -209,7 +201,7 @@ ClickSCManager::deactivate_core(int new_cpu_id, ErrorHandler *errh)
 {
     String response = "";
     int ret = 0;
-    for (int inic = 0; inic < _sc->get_nics_nb(); inic++) {
+    for (unsigned inic = 0; inic < _sc->get_nics_nb(); inic++) {
         // Stop using the new cores BEFORE the secondary has been torn down
         if (metron()->_rx_mode == RSS) {
             _sc->_nics[inic]->call_rx_write("max_rss", String(new_cpu_id + 1));
@@ -382,7 +374,7 @@ ClickSCManager::nic_stats_to_json()
 {
     Json jnics = Json::make_array();
 
-    for (int i = 0; i < _sc->get_nics_nb(); i++) {
+    for (unsigned i = 0; i < _sc->get_nics_nb(); i++) {
         String is = String(i);
         uint64_t rx_count   = 0;
         uint64_t rx_bytes   = 0;
@@ -393,7 +385,7 @@ ClickSCManager::nic_stats_to_json()
         uint64_t tx_dropped = 0;
         uint64_t tx_errors  = 0;
 
-        for (int j = 0; j < _sc->get_max_cpu_nb(); j++) {
+        for (unsigned j = 0; j < _sc->get_max_cpu_nb(); j++) {
             String js = String(j);
             rx_count += atol(
                 simple_call_read("slaveFD" + is + "C" + js + ".count").c_str()
@@ -452,7 +444,7 @@ ClickSCManager::build_cmd_line(int socketfd)
     Bitvector lcore_cpu_list(RTE_MAX_LCORE, false);
     Bitvector sccpus = _sc->assigned_phys_cpus();
     click_chatter("Launching slave on CPUs %s", sccpus.unparse().c_str());
-    for (int i = 0; i < sccpus.size(); i++) {
+    for (unsigned i = 0; i < sccpus.size(); i++) {
         if (sccpus[i]) {
             click_chatter("Assigning %d -> %d", i, _sc->_metron->_cpu_click_to_phys[i]);
             lcore_cpu_list[_sc->_metron->_cpu_click_to_phys[i]] = true;
@@ -528,14 +520,14 @@ ClickSCManager::run_load_timer()
     simple_call_write("monitoring_lat.reset");
     Vector<String> load = simple_call_read("load").split(' ');
 
-    for (int j = 0; j < _sc->get_max_cpu_nb(); j++) {
-
+    for (unsigned j = 0; j < _sc->get_max_cpu_nb(); j++) {
         const int cpu_id = _sc->get_cpu_phys_id(j);
         String js = String(j);
         float cpu_load = 0;
         float cpu_queue = 0;
         uint64_t throughput = 0;
-        for (int i = 0; i < _sc->get_nics_nb(); i++) {
+
+        for (unsigned i = 0; i < _sc->get_nics_nb(); i++) {
             String is = String(i);
             NIC *nic = _sc->get_nic_by_index(i);
             assert(nic);
@@ -695,7 +687,7 @@ StandaloneSCManager::run_service_chain(ErrorHandler *errh)
 #if HAVE_BATCH
     ServiceChain *sc = _sc;
 
-    for (int i = 0; i < sc->get_nics_nb(); i++) {
+    for (unsigned i = 0; i < sc->get_nics_nb(); i++) {
         if (sc->rx_filter->apply(sc->get_nic_by_index(i), errh) != 0) {
             return errh->error("Could not apply Rx filter");
         }
@@ -718,7 +710,7 @@ StandaloneSCManager::run_service_chain(ErrorHandler *errh)
         int idx = 0;
         for (int i = 0; i < sc->get_nics_nb(); i++) {
             // Insert VF->PF traffic return rules
-            HashMap<long, String> rules_map;
+            HashMap<uint32_t, String> rules_map;
 
             NIC *nic = sc->get_nic_by_index(i);
 
@@ -726,10 +718,10 @@ StandaloneSCManager::run_service_chain(ErrorHandler *errh)
             for (int j = 0; j < sc->get_max_cpu_nb(); j++) {
                 int cpid = sc->get_cpu_phys_id(j);
                 String rule = "flow create " + String((cpid % _sriov) + 1 + pindex) + " transfer ingress pattern eth type is 2048 / end actions port_id id " + String(pindex) + " / end\n";
-                rules_map.insert(2093323+ i * 128 * 128 + pindex * 128 + cpid, rule);
+                rules_map.insert(2093323 + i * 128 * 128 + pindex * 128 + cpid, rule);
                 //click_chatter("Install %s", rule);
             }
-            int status = nic->get_flow_director(_sriov)->update_rules(rules_map, false);
+            int status = nic->get_flow_dispatcher(_sriov)->update_rules(rules_map, false);
             /*TODO : avoid duplicate rule installation for collocated SC (scale = false)
             */
             if (status < 0) {
@@ -744,7 +736,7 @@ StandaloneSCManager::run_service_chain(ErrorHandler *errh)
 
     Bitvector cpu;
     cpu.resize(click_max_cpu_ids());
-    for (int j = 0; j < sc->get_max_cpu_nb(); j++) {
+    for (unsigned j = 0; j < sc->get_max_cpu_nb(); j++) {
         assert(sc->get_cpu_info(j).assigned());
         cpu[sc->get_cpu_phys_id(j)] = true;
     }
@@ -767,7 +759,7 @@ StandaloneSCManager::run_service_chain(ErrorHandler *errh)
 #endif
 }
 
-StandaloneSCManager::StandaloneSCManager(ServiceChain *sc) : PidSCManager(sc), _sriov(-1), _cpustats(click_max_cpu_ids(), {0,0})  {
+StandaloneSCManager::StandaloneSCManager(ServiceChain *sc) : PidSCManager(sc), _sriov(-1), _cpu_stats(click_max_cpu_ids(), {0,0})  {
 
 };
 
@@ -775,21 +767,21 @@ Vector<float>
 StandaloneSCManager::update_load(Vector<CPUStat> &v)
 {
     Vector<float> load(v.size(), 0);
-    unsigned long long totalUser, totalUserLow, totalSys, totalIdle;
-    int cpuId;
+    unsigned long long total_user, total_user_low, total_sys, total_idle;
+    int cpu_id;
     FILE* file = fopen("/proc/stat", "r");
     char buffer[1024];
     char *res = fgets(buffer, 1024, file);
     assert(res);
-    while (fscanf(file, "cpu%d %llu %llu %llu %llu", &cpuId, &totalUser, &totalUserLow, &totalSys, &totalIdle) > 0) {
-        if (cpuId < load.size()) {
-            unsigned long long newTotal = totalUser + totalUserLow + totalSys;
-            unsigned long long tdiff =  (newTotal - v[cpuId].lastTotal);
-            unsigned long long idiff =  (totalIdle - v[cpuId].lastIdle);
+    while (fscanf(file, "cpu%d %llu %llu %llu %llu", &cpu_id, &total_user, &total_user_low, &total_sys, &total_idle) > 0) {
+        if (cpu_id < load.size()) {
+            unsigned long long new_total = total_user + total_user_low + total_sys;
+            unsigned long long tdiff =  (new_total - v[cpu_id].last_total);
+            unsigned long long idiff =  (total_idle - v[cpu_id].last_idle);
             if (tdiff + idiff > 0)
-                load[cpuId] =  tdiff / (tdiff + idiff);
-            v[cpuId].lastTotal = newTotal;
-            v[cpuId].lastIdle = totalIdle;
+                load[cpu_id] =  tdiff / (tdiff + idiff);
+            v[cpu_id].last_total = new_total;
+            v[cpu_id].last_idle = total_idle;
 
             res = fgets(buffer, 1024, file);
         }
@@ -806,13 +798,13 @@ StandaloneSCManager::run_load_timer()
 {
     float max_cpu_load = 0;
     int max_cpu_load_index = 0;
-    Vector<float> load = update_load(_cpustats);
-    for (int j = 0; j < _sc->get_max_cpu_nb(); j++) {
+    Vector<float> load = update_load(_cpu_stats);
+    for (unsigned j = 0; j < _sc->get_max_cpu_nb(); j++) {
         const int cpu_id = _sc->get_cpu_phys_id(j);
         String js = String(j);
         float cpu_load = 0;
         uint64_t throughput = 0;
-        for (int i = 0; i < _sc->get_nics_nb(); i++) {
+        for (unsigned i = 0; i < _sc->get_nics_nb(); i++) {
             String is = String(i);
             NIC *nic = _sc->get_nic_by_index(i);
             assert(nic);

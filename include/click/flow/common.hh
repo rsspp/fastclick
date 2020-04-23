@@ -549,6 +549,7 @@ inline void FlowControlBlock::release(int packets_nr) {
 #define SFCB_STACK(fnt) \
 		{fnt;}
 #endif //HAVE_FLOW
+
 CLICK_ENDDECLS
 
 #endif
