@@ -45,6 +45,7 @@ int NICScheduler::addCore() {
 
     const CpuInfo info = make_info(a_id);
     NICScheduler::addCore(info);
+    return a_id;
 }
 
 // BalanceMethod

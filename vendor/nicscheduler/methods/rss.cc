@@ -160,7 +160,14 @@ inline rte_flow* flow_add_redirect(int port_id, int from, int to, bool validate,
         if (validate)
             res = rte_flow_validate(port_id, &attr, pattern.data(), action, &error);
         if (res == 0) {
+#if RTE_FLOW_TIMING
+            click_cycles_t start = click_get_cycles();
+#endif
             struct rte_flow *flow = rte_flow_create(port_id, &attr, pattern.data(), action, &error);
+#if RTE_FLOW_TIMING
+            click_cycles_t end = click_get_cycles();
+            click_chatter("Redirect rules in %f usec",((double)(end-start) * 1000000) / (double)cycles_hz() );
+#endif
             click_chatter("Redirect from %d to %d success",from,to);
             return flow;
         } else {
@@ -198,9 +205,7 @@ again:
         struct rte_flow_attr attr;
         memset(&attr, 0, sizeof(struct rte_flow_attr));
         attr.ingress = 1;
-        if (_use_group) {
-            attr.group=2 + (_epoch % 2);
-        }
+        attr.group=2 + (_epoch % 2);
 
         struct rte_flow_action action[3];
         struct rte_flow_action_mark mark;
@@ -271,8 +276,15 @@ again:
             }
         }
         if (!res) {
-
+#if RTE_FLOW_TIMING
+            Timestamp start = Timestamp::now_steady();
+#endif
             struct rte_flow *flow = rte_flow_create(port_id, &attr, pattern.data(), action, &error);
+
+#if RTE_FLOW_TIMING
+            Timestamp end = Timestamp::now_steady();
+            click_chatter("In %d nsec",(end-start).nsecval());
+#endif
             if (flow) {
                 if (unlikely(balancer->verbose())) {
                     click_chatter("Flow added succesfully with %d patterns!", pattern.size());
@@ -294,20 +306,21 @@ again:
 
     } else {
 
+        bool _use_prio = true;
         std::vector<rte_flow*> newflows;
 
-        int tot;
-        if (_flows.size() == 1)
-            tot = 2;
-        else
-            tot = 1;
+        int tot = 1;
+        if (!_use_prio) {
+            if (_flows.size() == 1)
+                tot = 2;
+        }
 
         struct rte_flow_attr attr;
         for (int i = 0; i < tot; i++) {
             memset(&attr, 0, sizeof(struct rte_flow_attr));
             attr.ingress = 1;
-            if (_use_group) {
-                attr.group=1;
+            if (_use_prio) {
+                attr.priority = _epoch % 2;
             }
 
             struct rte_flow_action action[3];
@@ -361,7 +374,7 @@ again:
 
             pat.type = RTE_FLOW_ITEM_TYPE_IPV4;
 
-           if (tot == 2) {
+           if (!_use_prio && tot == 2) {
                struct rte_flow_item_ipv4* spec = (struct rte_flow_item_ipv4*) malloc(sizeof(rte_flow_item_ipv4));
                struct rte_flow_item_ipv4* mask = (struct rte_flow_item_ipv4*) malloc(sizeof(rte_flow_item_ipv4));
                bzero(spec, sizeof(rte_flow_item_ipv4));
@@ -398,14 +411,14 @@ again:
 
                 struct rte_flow *flow = rte_flow_create(port_id, &attr, pattern.data(), action, &error);
                 if (flow) {
-                if (unlikely(balancer->verbose()))
-                    click_chatter("Flow added succesfully with %d patterns!", pattern.size());
-                    if (validate) {
-                        click_chatter("Mark enabled!");
-                    }
-                } else {
-                if (unlikely(balancer->verbose()))
-                    click_chatter("Could not add pattern with %d patterns, error %d : %s", pattern.size(),  res, error.message);
+                    if (unlikely(balancer->verbose()))
+                        click_chatter("Flow added succesfully with %d patterns!", pattern.size());
+                        if (validate) {
+                            click_chatter("Mark enabled!");
+                        }
+                    } else {
+                    if (unlikely(balancer->verbose()))
+                        click_chatter("Could not add pattern with %d patterns, error %d : %s", pattern.size(),  res, error.message);
                     return false;
                 }
 
