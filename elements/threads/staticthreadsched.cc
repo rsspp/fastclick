@@ -81,9 +81,11 @@ StaticThreadSched::configure(Vector<String> &conf, ErrorHandler *errh)
                 preference = newpref;
             }
 #endif
-        if (preference < -1 || preference >= master()->nthreads()) {
+        if (preference < 0)
+            preference = master()->nthreads() + preference;
+        if (preference < 0 || preference >= master()->nthreads()) {
             errh->warning("thread preference %d out of range", preference);
-            preference = (preference < 0 ? -1 : 0);
+            preference = (preference < 0 ? THREAD_UNKNOWN : 0);
         }
         bool set = false;
         if (Element* e = router()->find(ename, this))

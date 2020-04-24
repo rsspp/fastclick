@@ -14,6 +14,9 @@ CLICK_DECLS
  * Statically binds elements to threads. If more than one StaticThreadSched
  * is specified, they will all run. The one that runs later may override an
  * earlier run.
+ * Thread values may be negative, in which case the value is substracted from
+ * the total number of threads used by Click. E.g. if click is launched with
+ * 8 threads (-j 8), and -1 is passed, using -1 or 7 refer to the same thread.
  * =a
  * ThreadMonitor, BalancedThreadSched
  */
