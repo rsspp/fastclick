@@ -106,6 +106,7 @@ CounterTest::run_task(Task* t)
     _add_fnt(_counter,{1,1});
     _write++;
     t->fast_reschedule();
+    return true;
 }
 
 void
