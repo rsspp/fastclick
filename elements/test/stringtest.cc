@@ -56,12 +56,22 @@ StringTest::initialize(ErrorHandler *errh)
     CHECK(v[1] == "simple");
     CHECK(v[2] == "string");
 
-
     CHECK(s.replace("simple", "complex") == "a complex string");
     CHECK(String("").replace("a", "b") == "");
 
-    errh->message("All tests pass!");
-    return 0;
+    s = String("HELLO YOU !");
+    CHECK(s.search("HELLO") == s.data());
+    CHECK(s.search("YOU") == s.data() + 6);
+    CHECK(s.search("ME") == 0);
+    CHECK(s.search("!") == s.data() + s.length() - 1);
+    CHECK(String("").search("!") == 0);
+
+
+    if (!errh->nerrors()) {
+    	errh->message("All tests pass!");
+		return 0;
+    } else
+    	return -1;
 }
 
 EXPORT_ELEMENT(StringTest)

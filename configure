@@ -874,7 +874,9 @@ enable_hash_iterator_epochs
 enable_force_expensive
 enable_valgrind
 enable_schedule_debugging
+enable_portable_binary
 enable_intel_cpu
+enable_avx2
 with_numa
 with_netmap
 with_proper
@@ -1603,7 +1605,11 @@ Optional Features:
   --enable-valgrind       extra support for debugging with valgrind
   --enable-schedule-debugging[=WHAT] enable Click scheduler debugging
                           (no/yes/extra) [yes]
+  --enable-portable-binary
+                          disable compiler optimizations that would produce
+                          unportable binaries
   --enable-intel-cpu      enable Intel-specific machine instructions
+  --enable-avx2           check whether AVX2 is enabled, default yes
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
@@ -6559,6 +6565,17 @@ else
 =========================================" "$LINENO" 5
 fi
 
+if test "x$enable_flow" = xyes; then
+    if test "x$enable_batch" != xyes; then
+        enable_flow=no
+        { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: --enable-flow needs --enable-batch! Flow subsystem will be disabled." >&5
+$as_echo "$as_me: WARNING: --enable-flow needs --enable-batch! Flow subsystem will be disabled." >&2;}
+    else
+        $as_echo "#define HAVE_FLOW 1" >>confdefs.h
+
+    fi
+fi
+
 # Check whether --enable-netmap-pool was given.
 if test "${enable_netmap_pool+set}" = set; then :
   enableval=$enable_netmap_pool; :
@@ -7276,7 +7293,6 @@ else
     have_json=no
 fi
 
-
 # Check whether --enable-select was given.
 if test "${enable_select+set}" = set; then :
   enableval=$enable_select; :
@@ -7346,8 +7362,15 @@ fi
 
 if test "x$enable_dpdk" = "xyes"; then
 
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for DPDK library" >&5
+$as_echo_n "checking for DPDK library... " >&6; }
+
     if test -z "$RTE_SDK_BIN"; then
         RTE_SDK_BIN=$RTE_SDK/$RTE_TARGET
+    fi
+
+    if test ! -d "$RTE_SDK_BIN"; then
+        RTE_SDK_BIN=$RTE_SDK/build/
     fi
 
     if test -z "$RTE_LIBNAME"; then
@@ -7378,19 +7401,28 @@ if test "x$enable_dpdk" = "xyes"; then
 
 Cannot find \$RTE_SDK_BIN/include/rte_eal.h for DPDK.
 Define \$RTE_SDK and \$RTE_TARGET as per DPDK documentation,
-or install DPDK using meson, or he system package manager.
+or install DPDK using meson, or the system package manager.
 
 =========================================" "$LINENO" 5
       fi
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes, found at $RTE_SDK_BIN" >&5
+$as_echo "yes, found at $RTE_SDK_BIN" >&6; }
+
       if test -e "$RTE_SRCDIR/VERSION"; then
         rte_ver_year=`cat $RTE_SRCDIR/VERSION | sed -e 's/-rc/.-rc./' -e 's/$/..99/' | awk -F '.' '{print int($1)}'`
         rte_ver_month=`cat $RTE_SRCDIR/VERSION | sed -e 's/-rc/.-rc./' -e 's/$/..99/' | awk -F '.' '{print int($2)}'`
         rte_ver_minor=`cat $RTE_SRCDIR/VERSION | sed -e 's/-rc/.-rc./' -e 's/$/..99/' | awk -F '.' '{print int($3)}'`
       else
-        rte_ver_major=`grep "#define RTE_VER_MAJOR" "$RTE_SDK_BIN/include/rte_version.h" | head -n 1 | awk '{print $3}'`
-        rte_ver_minor=`grep "#define RTE_VER_MINOR" "$RTE_SDK_BIN/include/rte_version.h" | head -n 1 | awk '{print $3}'`
-        rte_ver_year=`grep "#define RTE_VER_YEAR" "$RTE_SDK_BIN/include/rte_version.h" | head -n 1 | awk '{print $3}'`
-        rte_ver_month=`grep "#define RTE_VER_MONTH" "$RTE_SDK_BIN/include/rte_version.h" | head -n 1 | awk '{print $3}'`
+        if grep "#define RTE_VER_MAJOR" "$RTE_SDK_BIN/include/rte_config.h" &> /dev/null ; then
+            verfile=rte_config
+        else
+            verfile=rte_version
+        fi
+        rte_ver_major=`grep "#define RTE_VER_MAJOR" "$RTE_SDK_BIN/include/$verfile.h" | head -n 1 | awk '{print $3}'`
+        rte_ver_minor=`grep "#define RTE_VER_MINOR" "$RTE_SDK_BIN/include/$verfile.h" | head -n 1 | awk '{print $3}'`
+        rte_ver_year=`grep "#define RTE_VER_YEAR" "$RTE_SDK_BIN/include/$verfile.h" | head -n 1 | awk '{print $3}'`
+        rte_ver_month=`grep "#define RTE_VER_MONTH" "$RTE_SDK_BIN/include/$verfile.h" | head -n 1 | awk '{print $3}'`
       fi
 
 
@@ -11345,6 +11377,51 @@ _ACEOF
 fi
 
 
+# Check whether --enable-portable-binary was given.
+if test "${enable_portable_binary+set}" = set; then :
+  enableval=$enable_portable_binary; acx_maxopt_portable=$enableval
+else
+  acx_maxopt_portable=no
+fi
+
+if test $acx_maxopt_portable = no; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C++ compiler accepts -march=native" >&5
+$as_echo_n "checking whether C++ compiler accepts -march=native... " >&6; }
+if ${ax_cv_check_cxxflags___march_native+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CXXFLAGS
+  CXXFLAGS="$CXXFLAGS  -march=native"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_compile "$LINENO"; then :
+  ax_cv_check_cxxflags___march_native=yes
+else
+  ax_cv_check_cxxflags___march_native=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CXXFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cxxflags___march_native" >&5
+$as_echo "$ax_cv_check_cxxflags___march_native" >&6; }
+if test "x$ax_cv_check_cxxflags___march_native" = xyes; then :
+  CXXFLAGS="-march=native $CXXFLAGS";CFLAGS="-march=native $CFLAGS"
+else
+  :
+fi
+
+fi
+
 
 # Check whether --enable-intel-cpu was given.
 if test "${enable_intel_cpu+set}" = set; then :
@@ -11358,6 +11435,114 @@ if test $enable_intel_cpu = yes; then
 
 fi
 
+
+# Check whether --enable-avx2 was given.
+if test "${enable_avx2+set}" = set; then :
+  enableval=$enable_avx2; check_avx2=no
+else
+  check_avx2=yes
+fi
+
+
+if test "${check_avx2}" = "yes"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C++ compiler accepts -mavx" >&5
+$as_echo_n "checking whether C++ compiler accepts -mavx... " >&6; }
+if ${ax_cv_check_cxxflags___mavx+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CXXFLAGS
+  CXXFLAGS="$CXXFLAGS  -mavx"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_compile "$LINENO"; then :
+  ax_cv_check_cxxflags___mavx=yes
+else
+  ax_cv_check_cxxflags___mavx=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CXXFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cxxflags___mavx" >&5
+$as_echo "$ax_cv_check_cxxflags___mavx" >&6; }
+if test "x$ax_cv_check_cxxflags___mavx" = xyes; then :
+  CXXFLAGS="-mavx $CXXFLAGS";CFLAGS="-mavx $CFLAGS"
+else
+  :
+fi
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C++ compiler accepts -mavx2" >&5
+$as_echo_n "checking whether C++ compiler accepts -mavx2... " >&6; }
+if ${ax_cv_check_cxxflags___mavx2+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CXXFLAGS
+  CXXFLAGS="$CXXFLAGS  -mavx2"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_compile "$LINENO"; then :
+  ax_cv_check_cxxflags___mavx2=yes
+else
+  ax_cv_check_cxxflags___mavx2=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CXXFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cxxflags___mavx2" >&5
+$as_echo "$ax_cv_check_cxxflags___mavx2" >&6; }
+if test "x$ax_cv_check_cxxflags___mavx2" = xyes; then :
+  CXXFLAGS="-mavx2 $CXXFLAGS";CFLAGS="-mavx2 $CFLAGS"
+else
+  :
+fi
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether we can compile AVX2 intrinsics in C" >&5
+$as_echo_n "checking whether we can compile AVX2 intrinsics in C... " >&6; }
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+   #include <x86intrin.h>
+   int main(int argc, char **argv){
+   double* q;
+   __m256d a = _mm256_load_pd(q);
+   double d = _mm256_cvtsd_f64(a);
+   return 0;
+   }
+
+_ACEOF
+if ac_fn_cxx_try_compile "$LINENO"; then :
+  HAVE_AVX2=yes
+else
+  HAVE_AVX2=no
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: ${HAVE_AVX2}" >&5
+$as_echo "${HAVE_AVX2}" >&6; }
+fi
+if test "${HAVE_AVX2}" = "yes"; then
+  $as_echo "#define HAVE_AVX2 1" >>confdefs.h
+
+fi
 
 
 shell_expand () {
@@ -14658,6 +14843,8 @@ fi
 
 if test "x$enable_batch" = xyes; then
     provisions="$provisions batch"
+else
+    enable_batch="no"
 fi
 
 if test "$ac_have_libbpf$ac_have_libbpf_h" = yesyes; then
@@ -14666,6 +14853,15 @@ fi
 
 if test "x$enable_dpdk" = xyes; then
     provisions="$provisions dpdk"
+    if test "$rte_ver_year" -ge 19; then
+        provisions="$provisions dpdk19"
+    fi
+fi
+
+if test "x$enable_flow" = xyes; then
+    provisions="$provisions flow"
+else
+    enable_flow="no"
 fi
 
 if test "x$enable_experimental" = xyes; then
@@ -16140,8 +16336,11 @@ fi
 echo "
 
 Configuration Summary:
-    C Compiler:                  ${CC}
-    C++ Compiler:                ${CXX}
+    C     Compiler:              ${CC}
+    C++   Compiler:              ${CXX}
+
+          Batching:              ${enable_batch}
+              Flow:              ${enable_flow}
 
     DPDK   support:              ${enable_dpdk}
     Netmap support:              ${HAVE_NETMAP}
@@ -16153,6 +16352,8 @@ Configuration Summary:
     PAPI   support:              ${have_papi}
     RE2    support:              ${have_re2}
     BPF    support:              ${have_libbpf}
+    HTTPD  support:              ${have_httpd}
+    JSON   support:              ${have_json}
 "
 
 if test "x$enable_cpu_load" != "xyes"; then
