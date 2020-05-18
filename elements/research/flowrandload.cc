@@ -57,5 +57,6 @@ void FlowRandLoad::push_batch(int port, RandLoadState* flowdata, PacketBatch* ba
 
 CLICK_ENDDECLS
 
+ELEMENT_REQUIRES(flow)
 EXPORT_ELEMENT(FlowRandLoad)
 ELEMENT_MT_SAFE(FlowRandLoad)
