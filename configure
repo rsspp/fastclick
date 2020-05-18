@@ -11438,13 +11438,13 @@ fi
 
 # Check whether --enable-avx2 was given.
 if test "${enable_avx2+set}" = set; then :
-  enableval=$enable_avx2; check_avx2=no
+  enableval=$enable_avx2; check_avx2=$enable_avx2
 else
-  check_avx2=yes
+  check_avx2="auto"
 fi
 
 
-if test "${check_avx2}" = "yes"; then
+if test "${check_avx2}" = "yes" || test "${check_avx2}" = "auto"; then
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C++ compiler accepts -mavx" >&5
 $as_echo_n "checking whether C++ compiler accepts -mavx... " >&6; }
 if ${ax_cv_check_cxxflags___mavx+:} false; then :
@@ -11475,7 +11475,7 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cxxflags___mavx" >&5
 $as_echo "$ax_cv_check_cxxflags___mavx" >&6; }
 if test "x$ax_cv_check_cxxflags___mavx" = xyes; then :
-  CXXFLAGS="-mavx $CXXFLAGS";CFLAGS="-mavx $CFLAGS"
+  CXXFLAGS="-mavx $CXXFLAGS";CFLAGS="-mavx $CFLAGS";can_avx=yes
 else
   :
 fi
@@ -11510,34 +11510,73 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cxxflags___mavx2" >&5
 $as_echo "$ax_cv_check_cxxflags___mavx2" >&6; }
 if test "x$ax_cv_check_cxxflags___mavx2" = xyes; then :
-  CXXFLAGS="-mavx2 $CXXFLAGS";CFLAGS="-mavx2 $CFLAGS"
+  CXXFLAGS="-mavx2 $CXXFLAGS";CFLAGS="-mavx2 $CFLAGS";can_avx2=yes
 else
   :
 fi
 
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether we can compile AVX2 intrinsics in C" >&5
+  if test "${can_avx}${can_avx2}" = "yesyes"; then
+      if test "${check_avx2}" = "yes"; then
+          { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether we can compile AVX2 intrinsics in C" >&5
 $as_echo_n "checking whether we can compile AVX2 intrinsics in C... " >&6; }
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+          cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 
-   #include <x86intrin.h>
-   int main(int argc, char **argv){
-   double* q;
-   __m256d a = _mm256_load_pd(q);
-   double d = _mm256_cvtsd_f64(a);
-   return 0;
-   }
+           #include <x86intrin.h>
+           int main(int argc, char **argv){
+           double* q;
+           __m256d a = _mm256_load_pd(q);
+           double d = _mm256_cvtsd_f64(a);
+           return 0;
+           }
 
 _ACEOF
 if ac_fn_cxx_try_compile "$LINENO"; then :
   HAVE_AVX2=yes
 else
-  HAVE_AVX2=no
+  as_fn_error $? "Cannot compile with AVX2, but --enable-avx2 was given" "$LINENO" 5
 
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-  { $as_echo "$as_me:${as_lineno-$LINENO}: result: ${HAVE_AVX2}" >&5
+      else  #auto
+          { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether we can compile and run AVX2 intrinsics in C" >&5
+$as_echo_n "checking whether we can compile and run AVX2 intrinsics in C... " >&6; }
+          if test "$cross_compiling" = yes; then :
+  { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error $? "cannot run test program while cross compiling
+See \`config.log' for more details" "$LINENO" 5; }
+else
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+           #include <x86intrin.h>
+           int main(int argc, char **argv){
+           double* q;
+           __m256d a = _mm256_load_pd(q);
+           double d = _mm256_cvtsd_f64(a);
+           return 0;
+           }
+
+_ACEOF
+if ac_fn_cxx_try_run "$LINENO"; then :
+  HAVE_AVX2=yes
+else
+  HAVE_AVX2=no
+
+fi
+rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
+  conftest.$ac_objext conftest.beam conftest.$ac_ext
+fi
+
+      fi
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: ${HAVE_AVX2}" >&5
 $as_echo "${HAVE_AVX2}" >&6; }
+  else
+      if "${enable_avx2}" = "yes" ; then
+        as_fn_error $? "Cannot compile with AVX2 because compiler cannot use -mavx -mavx2" "$LINENO" 5
+      fi
+  fi
 fi
 if test "${HAVE_AVX2}" = "yes"; then
   $as_echo "#define HAVE_AVX2 1" >>confdefs.h
