@@ -76,7 +76,7 @@ inline bool
 RSSVerifier::update(Packet *p)
 {
     if (!_active)
-	return false;
+	    return false;
 
     uint32_t agg = AGGREGATE_ANNO(p) & _mask;
 _count++;
@@ -85,7 +85,7 @@ _count++;
     	click_chatter("ERROR : AGG %u, idx %u does not map to %d but %d", AGGREGATE_ANNO(p),agg,_table[agg],click_current_cpu_id());
 
     }
-
+    return true;
 }
 
 void

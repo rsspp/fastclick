@@ -343,5 +343,6 @@ void FlowIPManager::add_handlers() {
 
 CLICK_ENDDECLS
 
+ELEMENT_REQUIRES(dpdk)
 EXPORT_ELEMENT(FlowIPManager)
 ELEMENT_MT_SAFE(FlowIPManager)

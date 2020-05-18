@@ -55,12 +55,14 @@ struct SocketLoad : MachineLoad {
 
 inline void MethodRSSPP::apply_moves(std::function<int(int)> cpumap, std::vector<std::vector<std::pair<int,int>>> omoves, const Timestamp &begin) {
         if (balancer->_manager) {
+#if HAVE_DPDK
             for (int i = 0; i < omoves.size(); i++) {
                 if (omoves[i].size() > 0) {
                     int from_phys_id = cpumap(i);
                     balancer->_manager->pre_migrate((DPDKEthernetDevice*)_fd,from_phys_id,omoves[i]);
                 }
             }
+#endif
         }
 
         Timestamp t = Timestamp::now_steady();
@@ -70,12 +72,14 @@ inline void MethodRSSPP::apply_moves(std::function<int(int)> cpumap, std::vector
 
         update_reta();
         if (balancer->_manager) {
+#if HAVE_DPDK
             for (int i = 0; i < omoves.size(); i++) {
                 if (omoves[i].size() > 0) {
                     int from_phys_id =  cpumap(i);
                     balancer->_manager->post_migrate((DPDKEthernetDevice*)_fd,from_phys_id);
                 }
             }
+#endif
         }
 }
 
@@ -630,4 +634,17 @@ reset_count:
         balancer->set_tick(balancer->tick_max());
     if (balancer->current_tick() < balancer->tick_min())
         balancer->set_tick(balancer->tick_min());
+}
+
+int LoadTracker::load_tracker_initialize(ErrorHandler* errh) {
+    _past_load.resize(click_max_cpu_ids());
+    _moved.resize(click_max_cpu_ids(),false);
+
+    _last_movement.resize(click_max_cpu_ids());
+    click_jiffies_t now = click_jiffies();
+    for (int i =0; i < _last_movement.size(); i++) {
+        _last_movement[i] = now;
+    }
+
+    return 0;
 }

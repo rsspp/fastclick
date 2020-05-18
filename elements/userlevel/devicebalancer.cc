@@ -21,17 +21,21 @@
 #if HAVE_NUMA
 #include <click/numa.hh>
 #endif
+#if HAVE_DPDK
 #include <rte_flow.h>
+#include "../flow/flowipmanager.hh"
+#endif
 #include "devicebalancer.hh"
 #ifdef HAVE_BPF
 #include "xdploader.hh"
 #endif
-#include "../flow/flowipmanager.hh"
 
 #include <string>
 
-#if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
+#if HAVE_DPDK
+# if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
     #include <click/flowdispatcher.hh>
+# endif
 #endif
 
 CLICK_DECLS
@@ -187,8 +191,10 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
         } else {
             return errh->error("You must set a RSSCOUNTER element");
         }
+    }
+#if HAVE_DPDK
     //Metron
-    } else if (get_method()->name() == "metron") {
+    else if (get_method()->name() == "metron") {
         MethodMetron* metron = static_cast<MethodMetron*>(get_method());
         if (Args(this, errh).bind(conf)
                 .read_or_set("CONFIG", metron->_rules_file, "")
@@ -197,6 +203,7 @@ DeviceBalancer::configure(Vector<String> &conf, ErrorHandler *errh) {
                 .consume() < 0)
             return -1;
     }
+#endif
 
     //Verify and set a potential FlowIPManager argument
     if (manager) {
@@ -234,10 +241,12 @@ DeviceBalancer::initialize(ErrorHandler *errh) {
     if (_manager) {
         MethodRSS* method = dynamic_cast<MethodRSS*>(_method);
         if (method != 0) {
+#if HAVE_DPDK
             dynamic_cast<FlowIPManager*>(_manager)->post([this,method](){
                     _manager->init_assignment(method->_table.data(), method->_table.size());
                     return 0;
             });
+#endif
         }
     }
     for (int i = 0; i < startwith; i++) {
@@ -315,6 +324,8 @@ DeviceBalancer::run_timer(Timer* t) {
         }
 
         if (_load == LOAD_CYCLES_THEN_QUEUE && overloaded > 1) {
+
+#if HAVE_DPDK
             DPDKDevice* fd = (DPDKDevice*)((BalanceMethodDevice*)_method)->_fd;
             int port_id = fd->port_id;
             float rxdesc = fd->get_nb_rxdesc();
@@ -330,6 +341,9 @@ DeviceBalancer::run_timer(Timer* t) {
 
                 load[u].second = load[u].second * 0.90 + 0.10 * l;
             }
+#else
+            assert(false);
+#endif
         }
     } else if (_load == LOAD_REALCPU) {
         Vector<float> l(num_max_cpus(), 0);
@@ -361,6 +375,7 @@ DeviceBalancer::run_timer(Timer* t) {
             totload += cl;
         }
     } else { //_load == LOAD_QUEUE
+#if HAVE_DPDK
         DPDKDevice* fd = (DPDKDevice*)((BalanceMethodDevice*)_method)->_fd;
         int port_id = fd->port_id;
         float rxdesc = fd->get_nb_rxdesc();
@@ -371,6 +386,10 @@ DeviceBalancer::run_timer(Timer* t) {
             load.push_back(std::pair<int,float>{i,l});
             totload += l;
         }
+#else
+        assert(false);
+#endif
+
     }
 
     if (unlikely(_verbose > 1)) {
