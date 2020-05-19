@@ -22,8 +22,11 @@ public:
     int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
     int initialize(ErrorHandler *errh);
 
-
+    inline void load(Packet* p);
+    void push(int, Packet *);
+#if HAVE_BATCH
     void push_batch(int, PacketBatch *);
+#endif
 private:
     int _min;
     int _max;
