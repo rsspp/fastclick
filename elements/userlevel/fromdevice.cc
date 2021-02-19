@@ -49,6 +49,7 @@
 #include <linux/sockios.h>
 #include <fcntl.h>
 #include "fakepcap.hh"
+#include <linux/sockios.h>
 
 #if FROMDEVICE_ALLOW_LINUX
 # include <sys/socket.h>

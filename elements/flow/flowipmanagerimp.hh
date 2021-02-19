@@ -10,7 +10,9 @@
 #include <click/flow/flowelement.hh>
 #include <click/batchbuilder.hh>
 #include <click/timerwheel.hh>
+
 CLICK_DECLS
+
 class DPDKDevice;
 struct rte_hash;
 
@@ -37,15 +39,15 @@ class FlowIPManagerIMP: public VirtualFlowManager, public Router::InitFuture {
         FlowIPManagerIMP() CLICK_COLD;
         ~FlowIPManagerIMP() CLICK_COLD;
 
-        const char *class_name() const { return "FlowIPManagerIMP"; }
-        const char *port_count() const { return "1/1"; }
+        const char *class_name() const override { return "FlowIPManagerIMP"; }
+        const char *port_count() const override { return "1/1"; }
 
-        const char *processing() const { return PUSH; }
-        int configure_phase() const { return CONFIGURE_PHASE_PRIVILEGED + 1; }
+        const char *processing() const override { return PUSH; }
+        int configure_phase() const override { return CONFIGURE_PHASE_PRIVILEGED + 1; }
 
-        int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
-        int initialize(ErrorHandler *errh) CLICK_COLD;
-        void cleanup(CleanupStage stage) CLICK_COLD;
+        int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
+        int solve_initialize(ErrorHandler *errh) override CLICK_COLD;
+        void cleanup(CleanupStage stage) override CLICK_COLD;
 
         void push_batch(int, PacketBatch* batch) override;
         void run_timer(Timer*) override;
@@ -57,17 +59,17 @@ class FlowIPManagerIMP: public VirtualFlowManager, public Router::InitFuture {
         volatile int owner;
         Packet* queue;
 
-    struct gtable {
-	gtable() : hash(0), fcbs(0) {
 
-	}
-	rte_hash* hash;
-	FlowControlBlock *fcbs;
-    } CLICK_ALIGNED(CLICK_CACHE_LINE_SIZE);
+        struct gtable {
+            gtable() : hash(0), fcbs(0) {
+            }
+            rte_hash* hash;
+            FlowControlBlock *fcbs;
+        } CLICK_ALIGNED(CLICK_CACHE_LINE_SIZE);
 
-	gtable* _tables;
+        gtable* _tables;
 
-        int _reserve;
+	int _tables_count;
         int _table_size;
         int _flow_state_size_full;
         int _verbose;
@@ -76,10 +78,16 @@ class FlowIPManagerIMP: public VirtualFlowManager, public Router::InitFuture {
         int _timeout;
         Timer _timer; //Timer to launch the wheel
         Task _task;
+        bool _cache;
 
         static String read_handler(Element* e, void* thunk);
         inline void process(Packet* p, BatchBuilder& b, const Timestamp& recent);
         TimerWheel<FlowControlBlock> _timer_wheel;
+};
+
+const auto fim_setter = [](FlowControlBlock* prev, FlowControlBlock* next)
+{
+    *((FlowControlBlock**)&prev->data_32[2]) = next;
 };
 
 CLICK_ENDDECLS

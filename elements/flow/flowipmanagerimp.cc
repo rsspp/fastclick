@@ -12,10 +12,11 @@
 #include <rte_hash.h>
 #include <click/dpdk_glue.hh>
 #include <rte_ethdev.h>
+#include <rte_errno.h>
 
 CLICK_DECLS
 
-FlowIPManagerIMP::FlowIPManagerIMP() : _verbose(1), _flags(0), _timer(this), _task(this), _tables(0) {
+FlowIPManagerIMP::FlowIPManagerIMP() : _verbose(1), _flags(0), _timer(this), _task(this), _tables(0), _cache(true) {
 }
 
 FlowIPManagerIMP::~FlowIPManagerIMP()
@@ -27,8 +28,9 @@ FlowIPManagerIMP::configure(Vector<String> &conf, ErrorHandler *errh)
 {
     if (Args(conf, this, errh)
         .read_or_set_p("CAPACITY", _table_size, 65536)
-        .read_or_set("RESERVE",_reserve, 0)
+        .read_or_set("RESERVE", _reserve, 0)
         .read_or_set("TIMEOUT", _timeout, -1)
+        .read_or_set("CACHE", _cache, true)
         .complete() < 0)
         return -1;
 
@@ -41,17 +43,21 @@ FlowIPManagerIMP::configure(Vector<String> &conf, ErrorHandler *errh)
     find_children(_verbose);
 
     router()->get_root_init_future()->postOnce(&_fcb_builded_init_future);
+
     _fcb_builded_init_future.post(this);
+
+    _reserve += sizeof(uint32_t);
 
     return 0;
 }
 
-int FlowIPManagerIMP::initialize(ErrorHandler *errh)
+int FlowIPManagerIMP::solve_initialize(ErrorHandler *errh)
 {
     struct rte_hash_parameters hash_params = {0};
-    char buf[32];
+    char buf[64];
     hash_params.name = buf;
     auto passing = get_passing_threads();
+    _tables_count = passing.size();
     _table_size = next_pow2(_table_size/passing.weight());
     click_chatter("Real capacity for each table will be %d", _table_size);
     hash_params.entries = _table_size;
@@ -62,16 +68,16 @@ int FlowIPManagerIMP::initialize(ErrorHandler *errh)
 
     _flow_state_size_full = sizeof(FlowControlBlock) + _reserve;
 
-    _tables = CLICK_ALIGNED_NEW(gtable, passing.size());
+    _tables = CLICK_ALIGNED_NEW(gtable, _tables_count);
     CLICK_ASSERT_ALIGNED(_tables);
 
-    for (int i = 0; i < passing.size(); i++) {
+    for (int i = 0; i < _tables_count; i++) {
         if (!passing[i])
             continue;
-        sprintf(buf, "flowipmanager%d", i);
+        sprintf(buf, "%d-%s",i,name().c_str());
         _tables[i].hash = rte_hash_create(&hash_params);
         if (!_tables[i].hash)
-            return errh->error("Could not init flow table %d!", i);
+            return errh->error("Could not init flow table %d : error %d (%s)!", i, rte_errno, rte_strerror(rte_errno));
 
         _tables[i].fcbs =  (FlowControlBlock*)CLICK_ALIGNED_ALLOC(_flow_state_size_full * _table_size);
         CLICK_ASSERT_ALIGNED(_tables[i].fcbs);
@@ -93,11 +99,6 @@ int FlowIPManagerIMP::initialize(ErrorHandler *errh)
 }
 
 
-const auto setter = [](FlowControlBlock* prev, FlowControlBlock* next)
-{
-        *((FlowControlBlock**)&prev->data_32[2]) = next;
-};
-
 bool FlowIPManagerIMP::run_task(Task* t)
 {
     /*
@@ -118,6 +119,7 @@ bool FlowIPManagerIMP::run_task(Task* t)
         return next;
     });
     return true;*/
+    return false;
 }
 
 void FlowIPManagerIMP::run_timer(Timer* t)
@@ -129,21 +131,27 @@ void FlowIPManagerIMP::run_timer(Timer* t)
 void FlowIPManagerIMP::cleanup(CleanupStage stage)
 {
     click_chatter("Cleanup the table");
-    for(int i =0; i<click_max_cpu_ids(); i++) {
-       if (_tables[i].hash)
-           rte_hash_free(_tables[i].hash);
+    if (_tables) {
+        for(int i =0; i<click_max_cpu_ids(); i++) {
+           if (_tables[i].hash)
+               rte_hash_free(_tables[i].hash);
 
-       if (_tables[i].fcbs)
-            delete _tables[i].fcbs;
+           if (_tables[i].fcbs)
+                delete _tables[i].fcbs;
+        }
+
+        delete _tables;
     }
-
-    delete _tables;
 }
 
 void FlowIPManagerIMP::process(Packet* p, BatchBuilder& b, const Timestamp& recent)
 {
     IPFlow5ID fid = IPFlow5ID(p);
 
+    if (_cache && fid == b.last_id) {
+        b.append(p);
+        return;
+    }
     auto& tab = _tables[click_current_cpu_id()];
     rte_hash* table = tab.hash;
 
@@ -152,23 +160,24 @@ void FlowIPManagerIMP::process(Packet* p, BatchBuilder& b, const Timestamp& rece
     int ret = rte_hash_lookup(table, &fid);
     if (ret < 0) { //new flow
         ret = rte_hash_add_key(table, &fid);
-        if (ret < 0) {
-                    if (unlikely(_verbose > 0)) {
-                        click_chatter("Cannot add key (have %d items. Error %d)!", rte_hash_count(table), ret);
+        if (unlikely(ret < 0)) {
+            if (unlikely(_verbose > 0)) {
+                click_chatter("Cannot add key (have %d items. Error %d)!", rte_hash_count(table), ret);
             }
             p->kill();
             return;
         }
         fcb = (FlowControlBlock*)((unsigned char*)tab.fcbs + (_flow_state_size_full * ret));
+        //We remember the index in the first 4 reserved bytes
         fcb->data_32[0] = ret;
         if (_timeout > 0) {
             if (_flags) {
-                _timer_wheel.schedule_after_mp(fcb, _timeout, setter);
+                _timer_wheel.schedule_after_mp(fcb, _timeout, fim_setter);
             } else {
-                _timer_wheel.schedule_after(fcb, _timeout, setter);
+                _timer_wheel.schedule_after(fcb, _timeout, fim_setter);
             }
         }
-    } else {
+    } else { //existing flow
         fcb = (FlowControlBlock*)((unsigned char*)tab.fcbs + (_flow_state_size_full * ret));
     }
 
@@ -184,6 +193,9 @@ void FlowIPManagerIMP::process(Packet* p, BatchBuilder& b, const Timestamp& rece
         fcb_stack = fcb;
         b.init();
         b.append(p);
+        b.last = ret;
+        if (_cache)
+            b.last_id = fid;
     }
 }
 
@@ -206,11 +218,19 @@ enum {h_count};
 String FlowIPManagerIMP::read_handler(Element* e, void* thunk)
 {
     FlowIPManagerIMP* fc = static_cast<FlowIPManagerIMP*>(e);
-    click_chatter("ENTERED in the read_handler function");
-    rte_hash* table = fc->_tables[click_current_cpu_id()].hash;
     switch ((intptr_t)thunk) {
     case h_count:
-        return String(rte_hash_count(table));
+    {
+        int count = 0;
+        for(int i=0; i< fc->_tables_count; i++)
+        {
+        gtable * t = (fc->_tables)+i;
+        rte_hash* table = t->hash;
+        if(table)
+            count+=rte_hash_count(table);
+        }
+        return String(count);
+    }
     default:
         return "<error>";
     }
@@ -218,7 +238,7 @@ String FlowIPManagerIMP::read_handler(Element* e, void* thunk)
 
 void FlowIPManagerIMP::add_handlers()
 {
-
+    add_read_handler("count", read_handler, h_count);
 }
 
 CLICK_ENDDECLS

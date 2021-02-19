@@ -1,7 +1,9 @@
 /**
  * Metron
  */
-#include "../../include/click/flowdispatcher.hh"
+
+#include <click/config.h>
+#include <click/flowrulemanager.hh>
 
 String rewrite_id(String rule, int core) {
     int pos = rule.find_left("queue index");
@@ -13,7 +15,7 @@ String rewrite_id(String rule, int core) {
 int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
     if (!_is_dpdk)
         return errh->error("Metron only works with DPDK");
-    FlowDispatcher *flow_dir = FlowDispatcher::get_flow_dispatcher(((DPDKDevice*)_fd)->port_id);
+    FlowRuleManager *flow_dir = FlowRuleManager::get_flow_dispatcher(((DPDKDevice*)_fd)->port_id);
     assert(flow_dir);
 
     // Invoke Flow Dispatcher only if active
@@ -66,7 +68,7 @@ int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
 }
 
 void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
-    FlowDispatcher *flow_dir = FlowDispatcher::get_flow_dispatcher(((DPDKDevice*)_fd)->port_id);
+    FlowRuleManager *flow_dir = FlowRuleManager::get_flow_dispatcher(((DPDKDevice*)_fd)->port_id);
     click_jiffies_t now = click_jiffies();
     std::vector<std::pair<int,float>> underloaded;
     std::vector<std::pair<int,float>> overloaded;
@@ -222,15 +224,3 @@ void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
 }
 
 
-int LoadTracker::load_tracker_initialize(ErrorHandler* errh) {
-    _past_load.resize(click_max_cpu_ids());
-    _moved.resize(click_max_cpu_ids(),false);
-
-    _last_movement.resize(click_max_cpu_ids());
-    click_jiffies_t now = click_jiffies();
-    for (int i =0; i < _last_movement.size(); i++) {
-        _last_movement[i] = now;
-    }
-
-    return 0;
-}

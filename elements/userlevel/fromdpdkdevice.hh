@@ -91,18 +91,19 @@ Integer. The maximum transfer unit of the device.
 =item MODE
 
 String. The device's Rx mode. Can be none, rss, vmdq, vmdq_rss,
-vmdq_dcb, vmdq_dcb_rss. For DPDK version >= 17.05, flow_dir is also
-supported.
+vmdq_dcb, vmdq_dcb_rss. For DPDK version >= 20.02, 'flow' is also
+supported (DPDK's Flow API) if FastClick was built with --enable-flow-api.
 
 =item FLOW_RULES_FILE
 
-String. For DPDK version >= 17.05, if MODE is set to flow_dir, a path to
-a file with Flow Director rules can be supplied to the device.
-These rules are installed in the NIC using DPDK's flow API.
+String. For DPDK version >= 20.02, FastClick was built with --enable-flow-api,
+and if MODE is set to flow, a path to a file with Flow Rule Manager rules
+can be supplied to the device. These rules are installed in the NIC using
+DPDK's flow API.
 
 =item FLOW_ISOLATE
 
-Boolean. Requires MODE flow_dir. Isolated mode guarantees that all ingress
+Boolean. Requires MODE flow. Isolated mode guarantees that all ingress
 traffic comes from defined flow rules only (current and future).
 If ingress traffic does not match any of the defined rules, it will be
 discarded by the NIC. Defaults to false.
@@ -118,7 +119,9 @@ traffic using VLAN-based VMDq.
 
 =item PAUSE
 
-String. Set the device pause mode. "full" to enable pause frame for both RX and TX, "rx" or "tx" to set one of them, and "none" to disable pause frames. Do not set or choose "unset" to keep device current state/default.
+String. Set the device pause mode. "full" to enable pause frame for both
+RX and TX, "rx" or "tx" to set one of them, and "none" to disable pause frames.
+Do not set or choose "unset" to keep device current state/default.
 
 =item ALLOW_NONEXISTENT
 
@@ -225,6 +228,7 @@ Returns the device's link type (only fiber is currently supported).
 =h xstats read-only
 
 Returns a device's detailed packet and byte counters.
+If a parameter is given, only the matching counter will be returned.
 
 =h queue_count read-only
 
@@ -266,17 +270,6 @@ Sets the status of the device (1 for active, otherwise 0).
 =h count read-only
 
 Returns the number of packets read by the device.
-
-=h useful read-only
-
-Returns the number of useful runs of this device.
-This number corresponds to the number of times that the element is successfully scheduled to receive input packets.
-
-=h useless read-only
-
-Returns the number of useless runs of this device.
-This number corresponds to the number of times that the element is scheduled to receive input packets,
-but no packets are being received (idle CPU spinning).
 
 =h reset_counts write-only
 
@@ -349,7 +342,7 @@ Returns the number of errors of this device, as computed by the hardware.
 
 =h nombufs read-only
 
-Returns the number of mbufs allocated for this devce.
+Returns the total number of RX mbuf allocation failures. 
 
 =h rule_add write-only
 
@@ -367,7 +360,7 @@ Upon success, the number of deleted flow rules is returned, otherwise an error i
 
 =h rules_isolate write-only
 
-Enables/Disables Flow Director's isolation mode.
+Enables/Disables Flow Rule Manager's isolation mode.
 Isolated mode guarantees that all ingress traffic comes from defined flow rules only (current and future).
 Usage:
     'rules_isolate 0' disables isolation.
@@ -411,26 +404,24 @@ public:
     FromDPDKDevice() CLICK_COLD;
     ~FromDPDKDevice() CLICK_COLD;
 
-    const char *class_name() const { return "FromDPDKDevice"; }
-    const char *port_count() const { return PORTS_0_1; }
-    const char *processing() const { return PUSH; }
+    const char *class_name() const override { return "FromDPDKDevice"; }
+    const char *port_count() const override { return PORTS_0_1; }
+    const char *processing() const override { return PUSH; }
     void* cast(const char* name) override;
 
-    int configure_phase() const {
+    int configure_phase() const override {
         return CONFIGURE_PHASE_PRIVILEGED - 5;
     }
-    bool can_live_reconfigure() const { return false; }
+    bool can_live_reconfigure() const override { return false; }
 
-    int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
-    int initialize(ErrorHandler *) CLICK_COLD;
-    void add_handlers() CLICK_COLD;
-    void cleanup(CleanupStage) CLICK_COLD;
-    void clear_buffers();
-    bool run_task(Task *);
-    void run_timer(Timer* t);
-    void selected(int fd, int mask);
-
-    ToDPDKDevice *find_output_element();
+    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
+    int initialize(ErrorHandler *) override CLICK_COLD;
+    void add_handlers() override CLICK_COLD;
+    void cleanup(CleanupStage) override CLICK_COLD;
+    bool run_task(Task *) override;
+#if HAVE_DPDK_INTERRUPT
+    void selected(int fd, int mask) override;
+#endif
 
     inline DPDKDevice *get_device() {
         return _dev;
@@ -440,11 +431,8 @@ public:
     static uint64_t read_clock(void* thunk);
 #endif
 
-    inline EthernetDevice *get_eth_device() {
-        return _dev->get_eth_device();
-    }
+protected:
 
-private:
     static int reset_load_handler(
         const String &, Element *, void *, ErrorHandler *
     ) CLICK_COLD;
@@ -452,7 +440,7 @@ private:
     static int write_handler(
         const String &, Element *, void *, ErrorHandler *
     ) CLICK_COLD;
-#if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
+#if RTE_VERSION >= RTE_VERSION_NUM(20,2,0,0)
     static int flow_handler (
         const String &, Element *, void *, ErrorHandler *
     ) CLICK_COLD;
@@ -463,16 +451,19 @@ private:
                               const Handler *handler, ErrorHandler *errh);
 
     DPDKDevice* _dev;
-
+#if HAVE_DPDK_INTERRUPT
     int _rx_intr;
     class FDState { public:
-        FDState() : timer(), mustresched(0), useful(0) {};
-        Timer* timer;
+        FDState() : mustresched(0) {};
         int mustresched;
-        int useful;
     };
     per_thread<FDState> _fdstate;
+#endif
     bool _set_timestamp;
+    bool _tco;
+    bool _uco;
+    bool _ipco;
+    bool _clear;
 };
 
 CLICK_ENDDECLS

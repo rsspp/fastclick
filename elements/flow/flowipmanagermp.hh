@@ -8,73 +8,36 @@
 #include <click/batchelement.hh>
 #include <click/pair.hh>
 #include <click/flow/common.hh>
-#include <click/flow/flowelement.hh>
-
-
+#include <click/batchbuilder.hh>
 #include "flowipmanager.hh"
-
-
-
 
 CLICK_DECLS
 class DPDKDevice;
 struct rte_hash;
 
 /**
- * FCB packet classifier - cuckoo shared-by-all-threads
+ * FlowIPManagerMP(...)
  *
- * Initialize the FCB stack for every packets passing by.
- * The classification is done using a unique, thread safe cuckoo hash table.
+ * =s flow
+ *  FCB packet classifier, cuckoo thread-safe implementation
  *
- * This element does not find automatically the FCB layout for FlowElement,
- * neither set the offsets for placement in the FCB automatically. Look at
- * the middleclick branch for alternatives.
+ * =d
+ *  Multi-thread equivalent of FlowIPManager. This version uses DPDK's
+ *  thread-safe implementation of cuckoo hash table to ensure thread safeness.
+ *
+ *  See FlowIPManager documentation for usage.
+ *
+ * =a FlowIPManger
  */
-class FlowIPManagerMP: public VirtualFlowManager, Router::InitFuture, MigrationListener {
-public:
+class FlowIPManagerMP: public FlowIPManager {
+    public:
+        FlowIPManagerMP() CLICK_COLD;
+        ~FlowIPManagerMP() CLICK_COLD;
 
-
-    FlowIPManagerMP() CLICK_COLD;
-
-	~FlowIPManagerMP() CLICK_COLD;
-
-    const char *class_name() const		{ return "FlowIPManagerMP"; }
-    const char *port_count() const		{ return "1/1"; }
-
-    const char *processing() const		{ return PUSH; }
-    int configure_phase() const     { return CONFIGURE_PHASE_PRIVILEGED + 1; }
-
-    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
-    int solve_initialize(ErrorHandler *errh) override CLICK_COLD;
-    void cleanup(CleanupStage stage) override CLICK_COLD;
-
-    //First : group id, second : destination cpu
-    void pre_migrate(DPDKEthernetDevice* dev, int from, std::vector<std::pair<int,int>> gids) override;
-    void post_migrate(DPDKEthernetDevice* dev, int from) override;
-
-    void push_batch(int, PacketBatch* batch);
-
-    void init_assignment(Vector<unsigned> table);
-
-protected:
-
-
-	volatile int owner;
-	Packet* queue;
-	rte_hash* hash;
-	FlowControlBlock *fcbs;
-
-    int _table_size;
-    int _flow_state_size_full;
-    int _verbose;
-
-    bool _lf;
-
-    inline void process(Packet* p, BatchBuilder& b);
-
+        const char *class_name() const override { return "FlowIPManagerMP"; }
+        const char *port_count() const override { return "1/1"; }
+        const char *processing() const override { return PUSH; }
 };
-
-
 
 CLICK_ENDDECLS
 #endif

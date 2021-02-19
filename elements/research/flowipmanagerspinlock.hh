@@ -87,15 +87,15 @@ class FlowIPManagerSpinlock: public VirtualFlowManager, public Router::InitFutur
         FlowIPManagerSpinlock() CLICK_COLD;
         ~FlowIPManagerSpinlock() CLICK_COLD;
 
-        const char *class_name() const { return "FlowIPManagerSpinlock"; }
-        const char *port_count() const { return "1/1"; }
+        const char *class_name() const override { return "FlowIPManagerSpinlock"; }
+        const char *port_count() const override { return "1/1"; }
 
-        const char *processing() const { return PUSH; }
-        int configure_phase() const { return CONFIGURE_PHASE_PRIVILEGED + 1; }
+        const char *processing() const override { return PUSH; }
+        int configure_phase() const override { return CONFIGURE_PHASE_PRIVILEGED + 1; }
 
-        int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
-        int initialize(ErrorHandler *errh) CLICK_COLD;
-        void cleanup(CleanupStage stage) CLICK_COLD;
+        int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
+        int solve_initialize(ErrorHandler *errh) override CLICK_COLD;
+        void cleanup(CleanupStage stage) override CLICK_COLD;
 
         void push_batch(int, PacketBatch* batch) override;
         void run_timer(Timer*) override;

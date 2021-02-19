@@ -1,11 +1,12 @@
 // -*- mode: c++; c-basic-offset: 4 -*-
 #ifndef CLICK_FROMDUMP_HH
 #define CLICK_FROMDUMP_HH
-#include <click/element.hh>
+#include <click/batchelement.hh>
 #include <click/task.hh>
 #include <click/timer.hh>
 #include <click/notifier.hh>
 #include <click/fromfile.hh>
+#include <click/tinyexpr.hh>
 
 CLICK_DECLS
 class HandlerCall;
@@ -196,14 +197,14 @@ the file by writing C<filepos>.
 ToDump, FromDevice.u, ToDevice.u, tcpdump(1), mmap(2), AggregateIPFlows,
 FromTcpdump */
 
-class FromDump : public Element { public:
+class FromDump : public BatchElement { public:
 
     FromDump() CLICK_COLD;
     ~FromDump() CLICK_COLD;
 
-    const char *class_name() const		{ return "FromDump"; }
-    const char *port_count() const		{ return "0/1-2"; }
-    const char *processing() const		{ return PROCESSING_A_AH; }
+    const char *class_name() const override		{ return "FromDump"; }
+    const char *port_count() const override		{ return "0/1-2"; }
+    const char *processing() const override		{ return PROCESSING_A_AH; }
     void *cast(const char *);
     String declaration() const;
 
@@ -214,9 +215,12 @@ class FromDump : public Element { public:
     FromDump *hotswap_element() const;
     void take_state(Element *, ErrorHandler *);
 
-    void run_timer(Timer *);
-    bool run_task(Task *);
-    Packet *pull(int);
+    void run_timer(Timer *) override;
+    bool run_task(Task *) override;
+    Packet *pull(int) override;
+#if HAVE_BATCH
+    PacketBatch *pull_batch(int, unsigned) override;
+#endif
 
     void set_active(bool);
 
@@ -265,12 +269,19 @@ class FromDump : public Element { public:
     ActiveNotifier _notifier;
 
     Timestamp _timing_offset;
+    Timestamp _starttime;
+    Timestamp  _last_real;
+    uint64_t _last_check;
+    uint32_t _current_accel;
+    TinyExpr _fnt_expr;
+    uint32_t _burst;
+
     off_t _packet_filepos;
 
     bool read_packet(ErrorHandler *);
 
     void prepare_times(const Timestamp &);
-    bool check_timing(Packet *p);
+    inline bool check_timing(Packet *p, Timestamp &, bool &fresh);
 
     static String read_handler(Element *, void *) CLICK_COLD;
     static int write_handler(const String &, Element *, void *, ErrorHandler *) CLICK_COLD;

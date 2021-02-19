@@ -39,7 +39,7 @@ SimpleTCPReorder::cast(const char *n) {
    return FlowSpaceElement<fcb_simpletcpreorder>::cast(n);
 }
 
-void SimpleTCPReorder::push_batch(int port, fcb_simpletcpreorder* tcpreorder, PacketBatch *batch)
+void SimpleTCPReorder::push_flow(int port, fcb_simpletcpreorder* tcpreorder, PacketBatch *batch)
 {
     // Ensure that the pointer in the FCB is set
     if (!checkFirstPacket(tcpreorder, batch)) {
@@ -214,7 +214,7 @@ bool SimpleTCPReorder::putPacketInList(struct fcb_simpletcpreorder* tcpreorder, 
 
 void SimpleTCPReorder::killList(struct fcb_simpletcpreorder* tcpreorder) {
         SFCB_STACK( //Packet in the list have no reference
-            FOR_EACH_PACKET_SAFE(tcpreorder->packetList,p) {
+            FOR_EACH_PACKET_LL_SAFE(tcpreorder->packetList,p) {
                 click_chatter("WARNING : Non-free SimpleTCPReorder flow bucket");
                 p->kill();
             }

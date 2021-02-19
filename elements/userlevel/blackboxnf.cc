@@ -405,7 +405,7 @@ BlackboxNF::push_batch(int, PacketBatch *head)
     // Get the internal queue
     DPDKDevice::TXInternalQueue &iqueue = _iqueue;
 
-    Packet *p    = head;
+    Packet *p    = head->first();
     Packet *next = NULL;
 
     // No recycling through Click if we have DPDK packets

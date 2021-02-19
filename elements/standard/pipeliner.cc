@@ -50,7 +50,7 @@ void Pipeliner::cleanup(CleanupStage) {
         while ((p = storage.get_value(i).extract()) != 0) {
 #if HAVE_BATCH
             if (receives_batch == 1)
-                static_cast<PacketBatch*>(p)->kill();
+                reinterpret_cast<PacketBatch*>(p)->kill();
             else
 #endif
                 p->kill();
@@ -74,6 +74,7 @@ Pipeliner::configure(Vector<String> & conf, ErrorHandler * errh)
     .read("DIRECT_TRAVERSAL",_allow_direct_traversal)
     .read("NOUSELESS",_nouseless)
     .read("VERBOSE",_verbose)
+    .read_or_set("PREFETCH",_prefetch, true)
     .complete() < 0)
         return -1;
 
@@ -170,7 +171,8 @@ void Pipeliner::push_batch(int,PacketBatch* head) {
     }
     int count = head->count();
     retry:
-    if (storage->insert(head)) {
+    //CLWB did not prove helpful here
+    if (storage->insert(head->first())) {
         stats->count += count;
         if (sleepiness >= _sleep_threshold)
             _task.reschedule();
@@ -235,27 +237,37 @@ Pipeliner::run_task(Task* t)
         PacketBatch* out = NULL;
 #endif
         int n = 0;
-        while (!s.is_empty() && n++ < _burst) {
+        while (!s.is_empty() && n < _burst) {
 #if HAVE_BATCH
-            PacketBatch* b = static_cast<PacketBatch*>(s.extract());
+            PacketBatch* b = reinterpret_cast<PacketBatch*>(s.extract());
+
             if (unlikely(!receives_batch)) {
                 if (out == NULL) {
-                    b->set_tail(b);
+                    b->set_tail(b->first());
                     b->set_count(1);
                     out = b;
                 } else {
-                    out->append_packet(b);
+                    out->append_packet(b->first());
                 }
+                n+=1;
             } else {
+                n+=b->count();
                 if (out == NULL) {
                     out = b;
                 } else {
                     out->append_batch(b);
                 }
             }
+            if (_prefetch) {
+                FOR_EACH_PACKET(out,p) {
+                    __builtin_prefetch(p->data());
+                }
+            }
             //WritablePacket::pool_hint(b->count(),storage.get_mapping(i));
 #else
             Packet* p = s.extract();
+            if (_prefetch)
+                __builtin_prefetch(p->data());
             output(0).push(p);
             //WritablePacket::pool_hint(HINT_THRESHOLD,storage.get_mapping(i));
             r = true;

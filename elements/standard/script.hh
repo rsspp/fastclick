@@ -333,6 +333,11 @@ of a space-separated list of
 numbers; for example, 'C<count 5 0 2>' returns "C<3>" and
 'C<popcount 5 0 2>' returns "C<2>".
 
+=h gt_vec "read with parameters"
+
+Finds the number of items, or the numver of items higher than a given value;
+for example, 'C<gt_vec 5 0 2 7>' returns "C<1>".
+
 =h mul, div, idiv "read with parameters"
 
 Multiplies or divides a space-separated list of numbers and returns the
@@ -356,9 +361,9 @@ Returns the negative of its numeric parameter.
 
 Returns the absolute value of its numeric parameter.
 
-=h ceil "read with parameters"
+=h floor/round/ceil "read with parameters"
 
-Returns the ceiling integer value of its numeric parameter.
+Returns the flooring/rounded/ceiling integer value of its numeric parameter.
 
 
 =h eq, ne, lt, gt, le, ge "read with parameters"
@@ -465,9 +470,9 @@ class Script : public Element { public:
     static void static_initialize();
     static void static_cleanup();
 
-    const char *class_name() const      { return "Script"; }
-    const char *port_count() const      { return "-/-"; }
-    const char *processing() const      { return "ah/ah"; }
+    const char *class_name() const override      { return "Script"; }
+    const char *port_count() const override      { return "-/-"; }
+    const char *processing() const override      { return "ah/ah"; }
     int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
     int initialize(ErrorHandler *) CLICK_COLD;
     void add_handlers() CLICK_COLD;
@@ -484,7 +489,7 @@ class Script : public Element { public:
 #if CLICK_USERLEVEL
         insn_save, insn_append,
 #endif
-        INSN_LABEL, INSN_GOTO, INSN_RETURN, insn_returnq,
+        INSN_LABEL, INSN_GOTO, INSN_GOTOA, INSN_RETURN, insn_returnq,
         INSN_WAIT_PSEUDO, INSN_LOOP_PSEUDO,
         // negative instructions are also valid label constants
         insn_exit = -1, insn_end = -2, insn_stop = -3, insn_error = -4,
@@ -530,11 +535,11 @@ class Script : public Element { public:
     };
 
     enum {
-        ST_STEP = 0, ST_RUN, ST_GOTO,
+        ST_STEP = 0, ST_RUN, ST_GOTO, ST_GOTOA,
         ar_add = 0, ar_sub, ar_min, ar_max, ar_avg, ar_count,
         ar_popcount, ar_gt_vec,
         ar_mul, ar_div, ar_idiv, ar_mod, ar_rem,
-        ar_neg, ar_abs, ar_ceil,
+        ar_neg, ar_abs, ar_floor, ar_round, ar_ceil,
         AR_LT, AR_EQ, AR_GT, AR_GE, AR_NE, AR_LE, // order is important
         AR_FIRST, AR_NOT, AR_SPRINTF, ar_random, ar_cat, ar_catq,
         ar_and, ar_or, ar_nand, ar_nor, ar_now, ar_now_steady, ar_if, ar_in,

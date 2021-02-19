@@ -1,6 +1,7 @@
 #ifndef CLICK_TODPDKDEVICE_USERLEVEL_HH
 #define CLICK_TODPDKDEVICE_USERLEVEL_HH
 
+#include <click/config.h>
 #include <click/batchelement.hh>
 #include <click/sync.hh>
 #include <click/dpdkdevice.hh>
@@ -17,7 +18,7 @@ ToDPDKDevice(PORT [, QUEUE, N_QUEUES, I<keywords> IQUEUE, BLOCKING, etc.])
 
 =s netdevices
 
-sends packets to network device using DPDK (user-level)
+sends packets to network device using Intel's DPDK (user-level)
 
 =d
 
@@ -25,49 +26,43 @@ Sends packets to a network device with DPDK port identifier PORT. As DPDK does
 not support polling, this element only supports PUSH. It will build a batch of
 packets inside an internal queue (limited to IQUEUE packets) until it reaches
 BURST packets, and then send the batch to DPDK. If the batch is not ready after
-TIMEOUT us, it will flush the batch of packets even if it doesn't cointain
+TIMEOUT ms, it will flush the batch of packets even if it doesn't cointain
 BURST packets.
 
 Arguments:
 
-=over 14
+=over 8
 
 =item PORT
 
-Integer or PCI address. Port identifier of the device or a PCI address in the
+Integer or PCI address.  Port identifier of the device, or a PCI address in the
 format fffff:ff:ff.f
 
 =item QUEUE
 
-Integer. A specific hardware queue to use. Default is 0.
+Integer.  A specific hardware queue to use. Default is 0.
 
 =item N_QUEUES
 
-Integer. Number of hardware queues to use. -1 or default is to use as many
+Integer.  Number of hardware queues to use. -1 or default is to use as many
 queues as threads which can end up in this element.
-
-=item MAXQUEUES
-
-Integer. Set the maximum number of hardware queues to be used for transmission.
-If N_QUEUES is not set, the minimum number of queues is 1 and the maximum is MAXQUEUES.
-Defaults to 128.
 
 =item IQUEUE
 
-Integer. Size of the internal queue, i.e. number of packets that we can buffer
+Integer.  Size of the internal queue, i.e. number of packets that we can buffer
 before pushing them to the DPDK framework. If IQUEUE is bigger than BURST,
 some packets could be buffered in the internal queue when the output ring is
 full. Defaults to 1024.
 
 =item BLOCKING
 
-Boolean. If true, when there is no more space in the output device ring, and
+Boolean.  If true, when there is no more space in the output device ring, and
 the IQUEUE is full, we'll block until some packet could be sent. If false the
 packet will be dropped. Defaults to true.
 
 =item BURST
 
-Integer. Number of packets to batch before sending them out. A bigger BURST
+Integer.  Number of packets to batch before sending them out. A bigger BURST
 leads to more latency, but a better throughput. The default value of 32 is
 recommended as it is what DPDK will do under the hood. Prefer to set the
 TIMEOUT parameter to 0 if the throughput is low as it will maintain
@@ -75,7 +70,7 @@ performance.
 
 =item TIMEOUT
 
-Integer. Set a timeout to flush the internal queue. It is useful under low
+Integer.  Set a timeout to flush the internal queue. It is useful under low
 throughput as it could take a long time before reaching BURST packet in the
 internal queue. The timeout is expressed in milliseconds. Setting the timer to
 0 is not a bad idea as it will schedule after the source element (such as a
@@ -90,32 +85,12 @@ packets will never wait in the internal queue.
 
 =item NDESC
 
-Integer. Number of descriptors per ring. The default is 1024.
+Integer.  Number of descriptors per ring. The default is 1024.
 
 =item ALLOW_NONEXISTENT
 
-Boolean. Do not fail if the PORT do not existent. If it's the case the task
+Boolean.  Do not fail if the PORT do not existent. If it's the case the task
 will never run and this element will behave like Idle.
-
-=item ALLOC
-
-Boolean. If true, packets hosted in non-DPDK buffers are copied into newly-allocated
-DPDK mbufs.
-
-=item TCO
-
-Boolean. If True, enables TCP Checksum Offload. Packets must be set with the
-checksum flag, eg with ResetTCPChecksum. Defaults to False.
-
-=item TSO
-
-Boolean. If True, enables TCP Segmentation Offload. Packets must be configured
-individually as per DPDK documentation. Defaults to False.
-
-=item IPCO
-
-Booelan. If True, enables IP checksum offload alone (not L4 as TCO).
-Defaults to False.
 
 =back
 
@@ -145,17 +120,16 @@ public:
     ToDPDKDevice() CLICK_COLD;
     ~ToDPDKDevice() CLICK_COLD;
 
-    const char *class_name() const { return "ToDPDKDevice"; }
-    const char *port_count() const { return PORTS_1_0; }
-    const char *processing() const { return PUSH; }
+    const char *class_name() const override { return "ToDPDKDevice"; }
+    const char *port_count() const override { return PORTS_1_0; }
+    const char *processing() const override { return PUSH; }
 
-    int configure_phase() const {
+    int configure_phase() const override {
         return CONFIGURE_PHASE_PRIVILEGED;
     }
     bool can_live_reconfigure() const { return false; }
 
     int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
-    int thread_configure(ThreadReconfigurationStage, ErrorHandler*, Bitvector threads) override CLICK_COLD;
     int initialize(ErrorHandler *) override CLICK_COLD;
 
     void cleanup(CleanupStage stage) override CLICK_COLD;
@@ -167,33 +141,49 @@ public:
         h_opackets,h_obytes,h_oerrors
     };
 
+#if HAVE_IQUEUE
     void run_timer(Timer *);
+#endif
 #if HAVE_BATCH
     void push_batch(int port, PacketBatch *head);
 #endif
     void push(int port, Packet *p);
 
-private:
+protected:
 
+    inline void warn_congestion();
 
     inline void enqueue(rte_mbuf* &q, rte_mbuf* mbuf, const Packet* p);
 
+#if HAVE_IQUEUE
     inline void set_flush_timer(DPDKDevice::TXInternalQueue &iqueue);
     void flush_internal_tx_queue(DPDKDevice::TXInternalQueue &);
-
     per_thread<DPDKDevice::TXInternalQueue> _iqueues;
+#endif
 
     DPDKDevice* _dev;
     int _timeout;
     bool _congestion_warning_printed;
     bool _create;
-    bool _vlan;
     uint32_t _tso;
     bool _tco;
+    bool _uco;
     bool _ipco;
 
     friend class FromDPDKDevice;
 };
+
+
+
+inline void ToDPDKDevice::warn_congestion() {
+            if (!_congestion_warning_printed) {
+                if (!_blocking)
+                    click_chatter("%s: packet dropped", name().c_str());
+                else
+                    click_chatter("%s: congestion warning", name().c_str());
+                _congestion_warning_printed = true;
+            }
+}
 
 CLICK_ENDDECLS
 

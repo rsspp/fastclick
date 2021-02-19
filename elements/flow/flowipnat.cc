@@ -36,10 +36,10 @@ int
 FlowIPNAT::configure(Vector<String> &conf, ErrorHandler *errh)
 {
     if (Args(conf, this, errh)
-               .read_mp("SIP",_sip)
-               .read("ACCEPT_NONSYN", _accept_nonsyn)
-               .read("STATE", _own_state)
-               .complete() < 0)
+       .read_mp("SIP",_sip)
+       .read_or_set("ACCEPT_NONSYN", _accept_nonsyn, true)
+       .read_or_set("STATE", _own_state, false)
+       .complete() < 0)
         return -1;
 
     return 0;
@@ -62,7 +62,7 @@ int FlowIPNAT::initialize(ErrorHandler *errh)
     }
 
     /**
-     * Get passing threads, that is the threads that will call push_batch
+     * Get passing threads, that is the threads that will call push_flow
      */
     Bitvector passing = get_passing_threads(); // TODO touching false
     if (passing.weight() == 0) {
@@ -161,7 +161,7 @@ void FlowIPNAT::release_flow(NATEntryIN* fcb)
 }
 
 
-void FlowIPNAT::push_batch(int port, NATEntryIN* flowdata, PacketBatch* batch)
+void FlowIPNAT::push_flow(int port, NATEntryIN* flowdata, PacketBatch* batch)
 {
     if (!_own_state && flowdata->ref && flowdata->ref->closing && isSyn(batch->first())) {
         // If the state is not handled by us, another manager could have deleted the other side while
@@ -169,14 +169,15 @@ void FlowIPNAT::push_batch(int port, NATEntryIN* flowdata, PacketBatch* batch)
         release_ref(flowdata->ref, _own_state);
         new_flow(flowdata, batch->first());
     }
-    auto fnt = [this,flowdata](Packet* p) -> bool {
+    auto fnt = [this,flowdata](Packet* &p) -> bool {
         if (!flowdata->ref) {
             return false;
         }
 
         WritablePacket* q=p->uniqueify();
         //click_chatter("Rewrite to %s %d",_sip.unparse().c_str(),htons(flowdata->ref->port));
-        q->rewrite_ipport(_sip, flowdata->ref->port, 0, true);
+        q->rewrite_ipport(_sip, flowdata->ref->port, 0, isTCP(q));
+        p = q;
 
         if (!_own_state || update_state<NATState>(flowdata,q)) {
             return true;
@@ -242,7 +243,7 @@ void FlowIPNATReverse::release_flow(NATEntryOUT* fcb)
 #endif
 }
 
-void FlowIPNATReverse::push_batch(int port, NATEntryOUT* flowdata, PacketBatch* batch)
+void FlowIPNATReverse::push_flow(int port, NATEntryOUT* flowdata, PacketBatch* batch)
 {
     if (!_in->_own_state && flowdata->ref && flowdata->ref->closing && isSyn(batch->first())) {
         // If the state is not handled by us, another manager could have deleted the other side while
@@ -252,14 +253,15 @@ void FlowIPNATReverse::push_batch(int port, NATEntryOUT* flowdata, PacketBatch* 
     }
 
     //_state->port_epoch[*flowdata] = epoch;
-    auto fnt = [this,flowdata](Packet*p) -> bool {
+    auto fnt = [this,flowdata](Packet* &p) -> bool {
         //click_chatter("Rewrite to %s %d",flowdata->map.ip.unparse().c_str(),ntohs(flowdata->map.port));
         if (!flowdata->ref) {
             click_chatter("Return flow without ref?");
             return false;
         }
         WritablePacket* q=p->uniqueify();
-        q->rewrite_ipport(flowdata->map.ip, flowdata->map.port, 1, true);
+        p = q;
+        q->rewrite_ipport(flowdata->map.ip, flowdata->map.port, 1, isTCP(q));
         q->set_dst_ip_anno(flowdata->map.ip);
 
         if (!_in->_own_state || update_state<NATState>(flowdata, q)) {

@@ -45,7 +45,7 @@ class AverageCounterBase : public BatchElement { public:
 
     AverageCounterBase() CLICK_COLD;
 
-    const char *port_count() const		{ return PORTS_1_1; }
+    const char *port_count() const override		{ return PORTS_1_1; }
     int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
 
     int initialize(ErrorHandler *) CLICK_COLD;
@@ -69,11 +69,17 @@ class AverageCounterBase : public BatchElement { public:
     static String averagecounter_read_rate_handler(Element *e, void *thunk);
     Stats _stats;
     uint64_t _ignore;
+    uint32_t _threshold;
+    uint32_t _max;
 };
 
 
 template <typename T>
 struct AverageCounterStats {
+    AverageCounterStats() {
+        reset();
+    }
+
     T _count;
     T _byte_count;
     T _first;
@@ -108,13 +114,13 @@ struct AverageCounterStats {
 class AverageCounter : public AverageCounterBase<AverageCounterStats<uint64_t> > { public:
     AverageCounter() CLICK_COLD;
 
-    const char *class_name() const		{ return "AverageCounter"; }
+    const char *class_name() const override		{ return "AverageCounter"; }
 };
 
 class AverageCounterMP : public AverageCounterBase<AverageCounterStats<atomic_uint64_t> > { public:
     AverageCounterMP() CLICK_COLD;
 
-    const char *class_name() const		{ return "AverageCounterMP"; }
+    const char *class_name() const override		{ return "AverageCounterMP"; }
 };
 
 
@@ -170,7 +176,7 @@ struct AverageCounterStatsIMP {
 class AverageCounterIMP : public AverageCounterBase<AverageCounterStatsIMP> { public:
     AverageCounterIMP() CLICK_COLD;
 
-    const char *class_name() const		{ return "AverageCounterIMP"; }
+    const char *class_name() const override		{ return "AverageCounterIMP"; }
 };
 
 

@@ -160,8 +160,8 @@ class FromIPSummaryDump : public BatchElement, public IPSummaryDumpInfo { public
     FromIPSummaryDump() CLICK_COLD;
     ~FromIPSummaryDump() CLICK_COLD;
 
-    const char *class_name() const	{ return "FromIPSummaryDump"; }
-    const char *port_count() const	{ return PORTS_0_1; }
+    const char *class_name() const override	{ return "FromIPSummaryDump"; }
+    const char *port_count() const override	{ return PORTS_0_1; }
     void *cast(const char *);
 
     int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
@@ -204,6 +204,9 @@ class FromIPSummaryDump : public BatchElement, public IPSummaryDumpInfo { public
     bool _have_timing : 1;
     bool _allow_nonexistent : 1;
     bool _migrate : 1;
+    bool _set_timestamp:1;
+    int _times;
+    int _first_packet_pos;
     Packet *_work_packet;
     uint32_t _multipacket_length;
     Timestamp _multipacket_timestamp_delta;
@@ -217,6 +220,7 @@ class FromIPSummaryDump : public BatchElement, public IPSummaryDumpInfo { public
     int _minor_version;
     IPFlowID _given_flowid;
 
+    per_thread<Vector<const unsigned char *>> _args;
     unsigned _burst;
 
     int read_binary(String &, ErrorHandler *);

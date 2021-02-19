@@ -7,7 +7,7 @@
 #include <clicknet/ip.h>
 #include <click/multithread.hh>
 #include "batchfcb.hh"
-#include <click/tcpelement.hh>
+#include <click/tcphelper.hh>
 #include <click/flow/flowelement.hh>
 
 #define TCPREORDER_POOL_SIZE 100
@@ -94,7 +94,7 @@ Default value: true.
 
 =a TCPIn, TCPOut, TCPRetransmitter */
 
-class TCPReorder : public FlowSpaceElement<fcb_tcpreorder>, public TCPElement
+class TCPReorder : public FlowSpaceElement<fcb_tcpreorder>, public TCPHelper
 {
 public:
     /**
@@ -107,19 +107,18 @@ public:
      */
     ~TCPReorder() CLICK_COLD;
 
-    const char *class_name() const        { return "TCPReorder"; }
-    const char *port_count() const        { return PORTS_1_1X2; }
-    const char *processing() const        { return PUSH; }
+    const char *class_name() const override        { return "TCPReorder"; }
+    const char *port_count() const override        { return PORTS_1_1X2; }
+    const char *processing() const override        { return PUSH; }
 
 
     void* cast(const char *n) override;
 
-    int configure(Vector<String>&, ErrorHandler*) CLICK_COLD;
-    int initialize(ErrorHandler *errh);
+    int configure(Vector<String>&, ErrorHandler*) override CLICK_COLD;
+    int solve_initialize(ErrorHandler *errh) override CLICK_COLD;
 
-    void push_batch(int, fcb_tcpreorder* fcb, PacketBatch *batch) override;
+    void push_flow(int, fcb_tcpreorder* fcb, PacketBatch *batch) override;
 
-    static void fcb_release_fnt(FlowControlBlock* fcb, void* thunk);
 private:
     /**
      * @brief Put a packet in the list of waiting packets

@@ -25,6 +25,7 @@
 #if HAVE_NUMA
 #include <click/numa.hh>
 #endif
+
 CLICK_DECLS
 
 StaticThreadSched::StaticThreadSched()
@@ -47,47 +48,63 @@ int
 StaticThreadSched::configure(Vector<String> &conf, ErrorHandler *errh)
 {
     String ename;
-    int preference;
+    String c_preference;
     for (int i = 0; i < conf.size(); i++) {
-        int numa = -1;
         if (Args(this, errh).push_back_words(conf[i])
             .read_mp("ELEMENT", ename)
-            .read_mp("THREAD", preference)
-            .read_p("NUMA" , numa)
+            .read_mp("THREAD", c_preference)
             .complete() < 0)
             return -1;
-#if !HAVE_NUME
-            if (numa != -1) {
-                return errh->error("NUMA cannot be used when Click is not compiled with libnuma support");
-            }
-#else
-            if (numa >= Numa::get_max_numas())
-                return errh->error("Invalid NUMA socked it %d"; numa);
-            if (numa >= 0) {
-                Bitvector n = Numa::cpus_bitmask(numa);
-                int newpref = -1;
-                int curpref = 0;
-                for (int j = 0; j < n; j++) {
-                    if (n[j]) {
-                        if (curpref == preference) {
-                            newpref = j;
+        Vector<String> pref = c_preference.split('/');
+        int preference;
+        if (pref.size() > 1) {
+            int socket;
+            if (!IntArg().parse(pref[0],socket,errh))
+                return -1;
+            if (!IntArg().parse(pref[1],preference,errh))
+                return -1;
+#if HAVE_NUMA
+            Bitvector b((int)click_max_cpu_ids());
+            auto bc = Numa::node_to_cpus(socket);
+            bc.toBitvector(b);
+            int idx = 0;
+            if (b[idx] && preference == 0) {
+
+            } else {
+
+                while (true) {
+                    if (b[idx]) {
+                        if (preference == 0)
                             break;
-                        }
-                        curpref++;
+                        preference--;
+                    }
+
+                    idx++;
+                    if (idx >= b.size()) {
+                        errh->warning("Socket %d has no usable core %s",socket,pref[1].c_str());
+                        idx = 0;
+                        break;
                     }
                 }
-                if (newpref == -1)
-                    return errh->error("NUMA socket %d does not have %d cores. Allocate more of them to Click.", numa, preference + 1);
-                preference = newpref;
             }
+            preference =idx;
+
+#else
+            return errh->error("Syntax SOCKET/CORE is only allowed when Click is compiled with NUMA support");
+
 #endif
-        if (preference < 0)
-            preference = master()->nthreads() + preference;
-        if (preference < 0 || preference >= master()->nthreads()) {
+        }
+        else {
+            if (!IntArg().parse(pref[0],preference,errh))
+                return -1;
+        }
+        if (preference <= -master()->nthreads() || preference >= master()->nthreads()) {
             errh->warning("thread preference %d out of range", preference);
-            preference = (preference < 0 ? THREAD_UNKNOWN : 0);
+            preference = (preference < 0 ? -1 : 0);
         }
         bool set = false;
+        if (preference < 0)
+            preference = master()->nthreads() + preference;
         if (Element* e = router()->find(ename, this))
             set = set_preference(e->eindex(), preference);
         else if (ename) {

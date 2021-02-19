@@ -7,7 +7,7 @@
 #include <clicknet/ip.h>
 #include <click/multithread.hh>
 #include "batchfcb.hh"
-#include <click/tcpelement.hh>
+#include <click/tcphelper.hh>
 #include <click/flow/flowelement.hh>
 
 #define TCPREORDER_POOL_SIZE 100
@@ -94,7 +94,7 @@ Default value: true.
 
 =a TCPIn, TCPOut, TCPRetransmitter */
 
-class SimpleTCPReorder : public FlowSpaceElement<fcb_simpletcpreorder>, public TCPElement
+class SimpleTCPReorder : public FlowSpaceElement<fcb_simpletcpreorder>, public TCPHelper
 {
 public:
     /**
@@ -117,7 +117,7 @@ public:
     int configure(Vector<String>&, ErrorHandler*) CLICK_COLD;
     int initialize(ErrorHandler *errh);
 
-    void push_batch(int, fcb_simpletcpreorder* fcb, PacketBatch *batch) override;
+    void push_flow(int, fcb_simpletcpreorder* fcb, PacketBatch *batch) override;
 
 private:
     /**

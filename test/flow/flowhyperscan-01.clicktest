@@ -1,0 +1,46 @@
+%require
+click-buildtool provides hs
+click-buildtool provides flow
+click-buildtool provides umultithread
+
+%script
+
+click -j 2 CONFIG
+
+%file CONFIG
+f1 :: FromIPSummaryDump(IN1, STOP true, TIMING true, TIMESTAMP true, BURST 1);
+f2 :: FromIPSummaryDump(IN2, STOP true, TIMING true, TIMESTAMP true, BURST 1);
+man :: FlowIPManagerHMP
+-> FlowLock
+-> StripTransportHeader
+-> FlowHyperScan("attack", VERBOSE 1)
+-> Print(TIMESTAMP false)
+-> UnstripTransportHeader
+-> Discard;
+
+f1 -> man;
+f2 -> man;
+
+StaticThreadSched(f1 0, f2 1);
+
+DriverManager(wait,wait)
+
+%file IN1
+!data timestamp src sport dst dport proto payload
+0.01 18.26.4.44 30 10.0.0.4 40 T "this is "
+0.03 18.26.4.44 30 10.0.0.4 40 T "an at"
+
+
+%file IN2
+!data timestamp src sport dst dport proto payload
+0.011 18.26.4.44 30 10.0.0.4 40 T "colliding"
+0.04 18.26.4.44 30 10.0.0.4 40 T "tack"
+
+%expect stderr
+{{Placing.*}}
+{{Placing.*}}
+   8 | 74686973 20697320
+   9 | 636f6c6c 6964696e 67
+   5 | 616e2061 74
+MATCHED
+   4 | 7461636b

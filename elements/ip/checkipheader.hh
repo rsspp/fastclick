@@ -114,9 +114,9 @@ class CheckIPHeader : public SimpleElement<CheckIPHeader> {
         CheckIPHeader() CLICK_COLD;
         ~CheckIPHeader() CLICK_COLD;
 
-        const char *class_name() const { return "CheckIPHeader"; }
-        const char *port_count() const { return PORTS_1_1X2; }
-        const char *processing() const { return PROCESSING_A_AH; }
+        const char *class_name() const override { return "CheckIPHeader"; }
+        const char *port_count() const override { return PORTS_1_1X2; }
+        const char *processing() const override { return PROCESSING_A_AH; }
         const char *flags() const      { return Element::AGNOSTIC; }
 
         int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
@@ -134,7 +134,17 @@ class CheckIPHeader : public SimpleElement<CheckIPHeader> {
                 Vector<IPAddress> &result_good_dst, Args &args
             );
         };
+    protected:
 
+        enum Reason {
+            MINISCULE_PACKET = 0,
+            BAD_VERSION,
+            BAD_HLEN,
+            BAD_IP_LEN,
+            BAD_CHECKSUM,
+            BAD_SADDR,
+            NREASONS
+        };
     private:
         unsigned _offset;
         Vector<IPAddress> _bad_src;   // array of illegal IP src addresses
@@ -151,15 +161,6 @@ class CheckIPHeader : public SimpleElement<CheckIPHeader> {
         atomic_uint64_t _drops;
         atomic_uint64_t *_reason_drops;
 
-        enum Reason {
-            MINISCULE_PACKET = 0,
-            BAD_VERSION,
-            BAD_HLEN,
-            BAD_IP_LEN,
-            BAD_CHECKSUM,
-            BAD_SADDR,
-            NREASONS
-        };
         static const char * const reason_texts[NREASONS];
 
         enum { h_count, h_drops, h_drop_details };

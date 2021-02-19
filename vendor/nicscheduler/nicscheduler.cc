@@ -90,4 +90,19 @@ MigrationListener::~MigrationListener() {
 #include "methods/rss.cc"
 #include "methods/rssrr.cc"
 #include "methods/rsspp.cc"
+#if HAVE_METRON
 #include "methods/metron.cc"
+#endif
+
+int LoadTracker::load_tracker_initialize(ErrorHandler* errh) {
+    _past_load.resize(click_max_cpu_ids());
+    _moved.resize(click_max_cpu_ids(),false);
+
+    _last_movement.resize(click_max_cpu_ids());
+    click_jiffies_t now = click_jiffies();
+    for (int i =0; i < _last_movement.size(); i++) {
+        _last_movement[i] = now;
+    }
+
+    return 0;
+}

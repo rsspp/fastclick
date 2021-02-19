@@ -170,6 +170,8 @@ void click_lfree(volatile void *p, size_t size);
 
 CLICK_DECLS
 
+#define assume(cond) do { if (!(cond)) __builtin_unreachable(); } while (0)
+
 #if HAVE_DPDK
 extern bool dpdk_enabled;
 #endif
@@ -716,6 +718,7 @@ typedef uint32_t click_cycles_t;
 inline click_cycles_t
 click_get_cycles()
 {
+
 #if CLICK_LINUXMODULE && HAVE_INT64_TYPES && __i386__
     uint64_t x;
     __asm__ __volatile__ ("rdtsc" : "=A" (x));
@@ -742,8 +745,11 @@ click_get_cycles()
     uint32_t xlo, xhi;
     __asm__ __volatile__ ("rdtsc" : "=a" (xlo), "=d" (xhi));
     return xlo;
-#elif CLICK_MINIOS
-    /* FIXME: Implement click_get_cycles for MiniOS */
+#elif CLICK_USERLEVEL && HAVE_DPDK && _RTE_CYCLES_H_
+    // On other architectures we use DPDK implementation, if available
+    return rte_get_tsc_cycles();
+#elif CLICK_USERLEVEL
+    #error "click_get_cycles is not implemented for your architecture!"
     return 0;
 #else
     // add other architectures here
@@ -751,17 +757,21 @@ click_get_cycles()
 #endif
 }
 
+extern click_cycles_t click_cycles_hz;
+
 inline click_cycles_t cycles_hz() {
 #if HAVE_DPDK && !CLICK_TOOL
-    if (dpdk_enabled) {
+    if (likely(dpdk_enabled)) {
         return rte_get_timer_hz();
     }
     return 0;
-#else
-    click_cycles_t tsc_freq = click_get_cycles();
-    sleep(1);
-    return click_get_cycles() - tsc_freq;
 #endif
+    if (click_cycles_hz == 0) {
+        click_cycles_t tsc_freq = click_get_cycles();
+        usleep(100000);
+        click_cycles_hz = (click_get_cycles() - tsc_freq) * 10;
+    }
+    return click_cycles_hz;
 }
 
 // Host to network order

@@ -58,6 +58,8 @@
 # include "../elements/ns/fromsimdevice.hh"
 #endif
 
+extern void click_delete_element(Element*);
+
 CLICK_DECLS
 
 /** @file router.hh
@@ -132,10 +134,10 @@ Router::~Router()
     // Delete elements in reverse configuration order
     if (_element_configure_order.size())
         for (int ord = _elements.size() - 1; ord >= 0; ord--)
-            delete _elements[ _element_configure_order[ord] ];
+            click_delete_element(_elements[ _element_configure_order[ord] ]);
     else
         for (int i = 0; i < _elements.size(); i++)
-            delete _elements[i];
+            click_delete_element(_elements[i]);
 
     delete _root_element;
 
@@ -848,7 +850,12 @@ Router::adjust_runcount(int32_t delta)
             new_value = STOP_RUNCOUNT;
         else
             new_value = old_value + delta;
+#if ! CLICK_ATOMIC_COMPARE_SWAP
+    } while (! _runcount.compare_and_swap(old_value, new_value));
+#else
     } while (_runcount.compare_swap(old_value, new_value) != old_value);
+#endif
+
     if ((int32_t) new_value <= 0)
         _master->request_stop();
 }
@@ -1726,8 +1733,9 @@ Router::store_local_handler(int eindex, Handler &to_store)
                 break;
             }
         }
-        if (l >= r)
+        if (l >= r) {
             l = _handler_first_by_name.insert(l, -1);
+        } 
         name_index = l - _handler_first_by_name.begin();
     }
 

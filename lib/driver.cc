@@ -374,7 +374,7 @@ RequireLexerExtra::require(String type, String value, ErrorHandler *errh)
 }
 
 
-static Lexer *_click_lexer;
+static Lexer *_click_lexer = 0;
 
 Lexer *
 click_lexer()
@@ -443,6 +443,11 @@ click_static_initialize()
     cp_va_static_initialize();
 
     ErrorHandler::static_initialize(new FileErrorHandler(stderr, ""));
+
+# if HAVE_CLICK_PACKET_POOL
+    //We need to initialize a thread pool for the master thread, as initialization phase may start allocating packets
+    WritablePacket::initialize_local_packet_pool();
+# endif
 
     Router::static_initialize();
     NotifierSignal::static_initialize();

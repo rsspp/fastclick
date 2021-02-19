@@ -1,6 +1,6 @@
 // -*- c-basic-offset: 4; related-file-name: "flowrrswitch.hh" -*-
 /*
- * FlowRRSwitch.{cc,hh} -- element splits input flows across its ports
+ * flowrrswitch.{cc,hh} -- element splits input flows across its ports
  * using a round-robin scheme.
  * Georgios Katsikas
  *
@@ -27,7 +27,7 @@
 
 CLICK_DECLS
 
-FlowRRSwitch::FlowRRSwitch() : _max(0), _current_port(0), _map(), _mask(), _load_aware(false)
+FlowRRSwitch::FlowRRSwitch() : _max_nb_port(0), _current_port(0), _map(), _mask()
 {
 }
 
@@ -38,16 +38,11 @@ FlowRRSwitch::~FlowRRSwitch()
 int
 FlowRRSwitch::configure(Vector<String> &conf, ErrorHandler *errh)
 {
-    _max = noutputs();
+    _max_nb_port = noutputs();
     if (Args(conf, this, errh)
-        .read("MAX", _max)
-        .read_or_set("LOAD", _load_aware, false)
+        .read("MAX", _max_nb_port)
         .complete() < 0)
     return -1;
-
-    if (_load_aware) {
-        _load.resize(_max,0);
-    }
 
     _mask = IPFlowID(0xffffffff, 0xffff, 0xffffffff, 0xffff);
 
@@ -63,22 +58,7 @@ FlowRRSwitch::cleanup(CleanupStage)
 unsigned
 FlowRRSwitch::round_robin()
 {
-    if (_load_aware) {
-        unsigned min = INT_MAX;
-        int min_i = -1;
-        for (int i = 0; i < _max; i++) {
-            unsigned l = _load.unchecked_at((i + _current_port) % _max);
-            if (l < min) {
-                min_i = i;
-                min = l;
-            }
-        }
-            _current_port = (min_i + _current_port) % _max;
-            _load[_current_port]++;
-            return _current_port;
-    } else {
-        return _current_port = ((++_current_port) % _max);
-    }
+    return _current_port = ((++_current_port) % _max_nb_port);
 }
 
 int
@@ -86,14 +66,11 @@ FlowRRSwitch::process(int port, Packet *p)
 {
     // Create a flow signature for this packet
     IPFlowID id(p);
-    IPFlow new_flow = IPFlow(
-        p->ip_header()->ip_p,   // Protocol
-        p->length()             // and packet length
-    );
+    IPFlowPort new_flow = IPFlowPort();
     new_flow.initialize(id & _mask);
 
     // Check if we already have such a flow
-    IPFlow *found = _map.find(id).get();
+    IPFlowPort *found = _map.find(id).get();
 
     // New flow
     if (!found) {
@@ -104,12 +81,8 @@ FlowRRSwitch::process(int port, Packet *p)
         _map.find_insert(new_flow);
 
         // Set the destiny of the next flow
-
         return new_flow.output_port();
     }
-
-    // Update this existing flow
-    found->update_size(p->length());
 
     return found->output_port();
 }
@@ -125,7 +98,7 @@ void
 FlowRRSwitch::push_batch(int port, PacketBatch *batch)
 {
     auto fnt = [this, port](Packet *p) { return process(port, p); };
-    CLASSIFY_EACH_PACKET(_max, fnt, batch, output_push_batch);
+    CLASSIFY_EACH_PACKET(_max_nb_port, fnt, batch, output_push_batch);
 }
 #endif
 
