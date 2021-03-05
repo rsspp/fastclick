@@ -61,12 +61,12 @@ RSS++ also works on top of Click and DPDK (it could also work with Netmap with a
 
 An example of involved elements would be:
 ```
-FromDPDKDevice(..., RSS_AGGREGATE 1)
+fd0 :: FromDPDKDevice(..., RSS_AGGREGATE 1)
           -> agg :: AggregateCounterVector(MASK 511)
           -> ...
           -> ToDPDKDevice(...)
     
-balancer :: DeviceBalancer(DEV fd0, METHOD pianorss, VERBOSE 0, TIMER 100, CPUS $CPU, TARGET 0.75, STARTCPU -1, LOAD 0.90, RSSCOUNTER agg, AUTOSCALE 1, CYCLES realcpu, RETA_SIZE $RETA_SIZE, IMBALANCE_THRESHOLD 0.02);
+balancer :: DeviceBalancer(DEV fd0, METHOD rsspp, VERBOSE 0, TIMER 100, CPUS $CPU, TARGET 0.75, STARTCPU -1, LOAD 0.90, RSSCOUNTER agg, AUTOSCALE 1, CYCLES realcpu, RETA_SIZE $RETA_SIZE, IMBALANCE_THRESHOLD 0.02);
 ```
 Basically, we use AggregateCounterVector to count packets going through a given element instead of XDP.
 
@@ -92,7 +92,7 @@ The code is documented and available at [vendor/nicscheduler/methods/rsspp.hh](h
 The various phases of the function work as follow:
  - Copy the packet counters if in BPF mode (value is directly accessed in DPDK mode).
  - Do a first pass over the load to count the overloaded cores and compute the average load.
- - Count the number of packets per core
+ - Count the number of packets per core.
  - If autoscale is enabled, remove or add a core according to the logic described in the paper. If a core is to be removed, an instance of BucketMapProblem is built and solved to move all buckets of the removed core to other cores. In that case the RSS table is rewritten and the function returns.
  - Then, the CPUs are separated in two sets : overloaded and underloaded.
  - An instance of BucketMapTargetProblem is built and solved in order to realize the optimization described in the paper.
