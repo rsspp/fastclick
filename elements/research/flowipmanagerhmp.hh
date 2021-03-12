@@ -12,8 +12,7 @@
 #include <click/flow/flowelement.hh>
 #include <click/flow/common.hh>
 #include <click/timerwheel.hh>
-
-#include "../flow/flowipmanagermp.hh"
+#include <click/batchbuilder.hh>
 
 CLICK_DECLS
 

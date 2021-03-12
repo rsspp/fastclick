@@ -49,7 +49,9 @@ AggregateCounterVector::configure(Vector<String> &conf, ErrorHandler *errh)
 
     if (Args(conf, this, errh)
     .read_mp("MASK", mask)
+#if HAVE_DPDK
     .read("MARK", mark)
+#endif
 	.read("BYTES", bytes)
 	.read("IP_BYTES", ip_bytes)
 	.read("MULTIPACKET", packet_count)

@@ -222,6 +222,6 @@ void FlowIPManagerSpinlock::add_handlers()
 
 CLICK_ENDDECLS
 
-ELEMENT_REQUIRES(FlowIPManager)
+ELEMENT_REQUIRES(FlowIPManager flow)
 EXPORT_ELEMENT(FlowIPManagerSpinlock)
 ELEMENT_MT_SAFE(FlowIPManagerSpinlock)

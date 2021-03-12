@@ -31,6 +31,7 @@ int MethodRSS::initialize(ErrorHandler *errh, int startwith) {
     }
     _fd->set_rss_reta(_fd, _table.data(), _table.size());
 
+#if HAVE_DPDK
     if (_is_dpdk) {
         int port_id = ((DPDKEthernetDevice*)_fd)->get_port_id();
 
@@ -55,6 +56,7 @@ int MethodRSS::initialize(ErrorHandler *errh, int startwith) {
 
         rte_eth_dev_start(port_id);
     }
+#endif
 
     for (int i = 0; i < _table.size(); i++) {
         _table[i] = i % startwith;
@@ -67,6 +69,8 @@ int MethodRSS::initialize(ErrorHandler *errh, int startwith) {
         return err;
 
     _update_reta_flow = true;
+
+#if HAVE_DPDK
     if (_is_dpdk) {
        if (!update_reta_flow(true)) {
             _update_reta_flow = false;
@@ -74,7 +78,9 @@ int MethodRSS::initialize(ErrorHandler *errh, int startwith) {
                 return errh->error("Neither flow RSS or global RSS works to program the RSS table.");
        } else
            click_chatter("RETA update method is flow");
-    } else {
+    } else
+#endif
+    {
         _update_reta_flow = false;
         if (_fd->set_rss_reta(_fd, _table.data(), _table.size()) != 0)
             return errh->error("Cannot program the RSS table.");
@@ -107,25 +113,30 @@ void MethodRSS::cpu_changed() {
     }
 
     if (balancer->_manager) {
+#if HAVE_DPDK
         for (int i = 0; i < m; i++) {
             if (omoves[i].size() > 0) {
                 balancer->_manager->pre_migrate((DPDKEthernetDevice*)_fd, i, omoves[i]);
             }
         }
+#endif
     }
     click_chatter("Migration info written. Updating reta.");
     update_reta();
     click_chatter("Post migration");
     if (balancer->_manager) {
+#if HAVE_DPDK
         for (int i = 0; i < m; i++) {
             if (omoves[i].size() > 0) {
                 balancer->_manager->post_migrate((DPDKEthernetDevice*)_fd, i);
             }
         }
+#endif
     }
     click_chatter("Post migration finished");
 }
 
+#if HAVE_DPDK
 inline rte_flow* flow_add_redirect(int port_id, int from, int to, bool validate, int priority = 0) {
         struct rte_flow_attr attr;
         memset(&attr, 0, sizeof(struct rte_flow_attr));
@@ -442,6 +453,7 @@ again:
      return true;
 
 }
+#endif
 
 bool MethodRSS::update_reta(bool validate) {
     Timestamp t = Timestamp::now_steady();
@@ -450,8 +462,10 @@ bool MethodRSS::update_reta(bool validate) {
     }*/
 
     if (_update_reta_flow) {
+#if HAVE_DPDK
         if (!update_reta_flow(validate))
             return false;
+#endif
     } else {
         if (!_fd->set_rss_reta(_fd, _table.data(), _table.size()))
             return false;

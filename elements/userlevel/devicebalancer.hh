@@ -2,7 +2,9 @@
 #define CLICK_DEVICEBALANCER_HH
 
 #include <click/batchelement.hh>
+#if HAVE_DPDK
 #include <click/dpdkdevice.hh>
+#endif
 #include <nicscheduler/ethernetdevice.hh>
 #include <nicscheduler/nicscheduler.hh>
 #include "../analysis/aggcountervector.hh"

@@ -35,19 +35,28 @@ int RandLoad::initialize(ErrorHandler *errh) {
     return 0;
 }
 
+inline void
+RandLoad::load(Packet* p)  {
+    int r;
+    int w =  _min + ((*_gens)() / (UINT_MAX / (_max - _min) ));  //click_random(_min, _max);
+    for (int i = 0; i < w - 1; i ++) {
+        r = (*_gens)();
+    }
+};
+
+void RandLoad::push(int port, Packet* p) {
+    load(p);
+    output_push(0, p);
+}
+
+#if HAVE_BATCH
 void RandLoad::push_batch(int port, PacketBatch* batch) {
-	int r;
-    auto fnt = [this,&r](Packet* p)  {
-	int w =  _min + ((*_gens)() / (UINT_MAX / (_max - _min) ));  //click_random(_min, _max);
-        for (int i = 0; i < w - 1; i ++) {
-            r = (*_gens)();
-        }
-        return p;
-    };
-    EXECUTE_FOR_EACH_PACKET(fnt, batch);
+    FOR_EACH_PACKET(batch, p)
+        load(p);
 
     output_push_batch(0, batch);
 }
+#endif
 
 
 CLICK_ENDDECLS

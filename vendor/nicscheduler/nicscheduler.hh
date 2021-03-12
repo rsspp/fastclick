@@ -66,16 +66,19 @@ class LoadTracker {
 #include "methods/rss.hh"
 #include "methods/rssrr.hh"
 #include "methods/rsspp.hh"
+#if HAVE_DPDK
 #include "methods/metron.hh"
-
+#endif
 
 class MigrationListener { public:
     MigrationListener();
     ~MigrationListener();
-
+//For now, migration listener is limited to DPDK. It's only a matter of more coding...
+#if HAVE_DPDK
     //First : group id, second : destination cpu
     virtual void pre_migrate(DPDKEthernetDevice* dev, int from, std::vector<std::pair<int,int>> gids) = 0;
     virtual void post_migrate(DPDKEthernetDevice* dev, int from) = 0;
+#endif
 
     virtual void init_assignment(unsigned* table, int sz) {};
 };
@@ -112,9 +115,12 @@ public:
      * @return -1 if the method was unknown, 0 in case of success
      */
     int set_method(std::string method, EthernetDevice* dev) {
+#if HAVE_DPDK
         if (method == "metron") {
             _method = new MethodMetron(this, dev);
-        } else if (method == "pianorss" || method== "rss++" || method == "rsspp") {
+        } else
+#endif
+        if (method == "pianorss" || method== "rss++" || method == "rsspp") {
             _method = new MethodRSSPP(this, dev);
         } else if (method == "rss") {
             _method = new MethodRSS(this, dev);

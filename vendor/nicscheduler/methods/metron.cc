@@ -222,15 +222,4 @@ void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
 }
 
 
-int LoadTracker::load_tracker_initialize(ErrorHandler* errh) {
-    _past_load.resize(click_max_cpu_ids());
-    _moved.resize(click_max_cpu_ids(),false);
 
-    _last_movement.resize(click_max_cpu_ids());
-    click_jiffies_t now = click_jiffies();
-    for (int i =0; i < _last_movement.size(); i++) {
-        _last_movement[i] = now;
-    }
-
-    return 0;
-}
