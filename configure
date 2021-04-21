@@ -675,6 +675,7 @@ HAVE_LINUXMODULE_DRIVER
 HAVE_USERLEVEL_DRIVER
 DRIVERS
 POSSIBLE_DRIVERS
+HAVE_FLOW_API
 LINUXMODULE_2_6
 EXTRA_TOOL_OBJS
 EXTRA_DRIVER_OBJS
@@ -714,6 +715,7 @@ RTE_VER_MAJOR
 RTE_SDK_BIN
 RTE_TARGET
 RTE_SDK
+RTE_USE_PKGCONFIG
 PTHREAD_LIBS
 HAVE_BATCH
 AR_CREATEFLAGS
@@ -7360,7 +7362,7 @@ else
 fi
 
 
-if test "x$enable_dpdk" = "xyes"; then
+if test "x$enable_dpdk" != "xno"; then
 
     { $as_echo "$as_me:${as_lineno-$LINENO}: checking for DPDK library" >&5
 $as_echo_n "checking for DPDK library... " >&6; }
@@ -7391,10 +7393,9 @@ $as_echo_n "checking for DPDK library... " >&6; }
     fi
 
 
-    if pkg-config --exists libdpdk ; then
-      RTE_LIB=pkg-config --variable=libdir libdpdk
-    else
       RTE_LIB="$RTE_SDK_BIN/lib"
+      RTE_USE_PKGCONFIG=0
+
       if test ! -f "$RTE_SDK_BIN/include/rte_eal.h"; then
         as_fn_error $? "
 =========================================
@@ -7449,7 +7450,6 @@ $as_echo "yes" >&6; }
         { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
       fi
-    fi
 
     $as_echo "#define HAVE_DPDK 1" >>confdefs.h
 
@@ -11270,6 +11270,88 @@ if test "x$enable_cpu_load" = xyes; then
     $as_echo "#define HAVE_CLICK_LOAD 1" >>confdefs.h
 
 fi
+
+as_ac_File=`$as_echo "ac_cv_file_$srcdir/include/click/flowruleparser.hh" | $as_tr_sh`
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $srcdir/include/click/flowruleparser.hh" >&5
+$as_echo_n "checking for $srcdir/include/click/flowruleparser.hh... " >&6; }
+if eval \${$as_ac_File+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  test "$cross_compiling" = yes &&
+  as_fn_error $? "cannot check for file existence when cross compiling" "$LINENO" 5
+if test -r "$srcdir/include/click/flowruleparser.hh"; then
+  eval "$as_ac_File=yes"
+else
+  eval "$as_ac_File=no"
+fi
+fi
+eval ac_res=\$$as_ac_File
+	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+$as_echo "$ac_res" >&6; }
+if eval test \"x\$"$as_ac_File"\" = x"yes"; then :
+  ac_have_flow_rule_parser_h=yes
+else
+  ac_have_flow_rule_parser_h=no
+fi
+
+as_ac_File=`$as_echo "ac_cv_file_$srcdir/include/click/flowrulecache.hh" | $as_tr_sh`
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $srcdir/include/click/flowrulecache.hh" >&5
+$as_echo_n "checking for $srcdir/include/click/flowrulecache.hh... " >&6; }
+if eval \${$as_ac_File+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  test "$cross_compiling" = yes &&
+  as_fn_error $? "cannot check for file existence when cross compiling" "$LINENO" 5
+if test -r "$srcdir/include/click/flowrulecache.hh"; then
+  eval "$as_ac_File=yes"
+else
+  eval "$as_ac_File=no"
+fi
+fi
+eval ac_res=\$$as_ac_File
+	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+$as_echo "$ac_res" >&6; }
+if eval test \"x\$"$as_ac_File"\" = x"yes"; then :
+  ac_have_flow_rule_cache_h=yes
+else
+  ac_have_flow_rule_cache_h=no
+fi
+
+as_ac_File=`$as_echo "ac_cv_file_$srcdir/include/click/flowrulemanager.hh" | $as_tr_sh`
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $srcdir/include/click/flowrulemanager.hh" >&5
+$as_echo_n "checking for $srcdir/include/click/flowrulemanager.hh... " >&6; }
+if eval \${$as_ac_File+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  test "$cross_compiling" = yes &&
+  as_fn_error $? "cannot check for file existence when cross compiling" "$LINENO" 5
+if test -r "$srcdir/include/click/flowrulemanager.hh"; then
+  eval "$as_ac_File=yes"
+else
+  eval "$as_ac_File=no"
+fi
+fi
+eval ac_res=\$$as_ac_File
+	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+$as_echo "$ac_res" >&6; }
+if eval test \"x\$"$as_ac_File"\" = x"yes"; then :
+  ac_have_flow_rule_man_h=yes
+else
+  ac_have_flow_rule_man_h=no
+fi
+
+if test "x$ac_have_flow_rule_parser_h$ac_have_flow_rule_cache_h$ac_have_flow_rule_man_h$enable_flow_api" = "xyesyesyesyes"; then
+    have_flow_api=yes
+    $as_echo "#define HAVE_FLOW_API 1" >>confdefs.h
+
+    HAVE_FLOW_API=1
+
+else
+    have_flow_api=no
+    HAVE_FLOW_API=0
+
+fi
+
 
 
 # Check whether --enable-dmalloc was given.
@@ -16343,6 +16425,7 @@ Configuration Summary:
               Flow:              ${enable_flow}
 
     DPDK   support:              ${enable_dpdk}
+           version:              ${rte_ver_year}.${rte_ver_month}
     Netmap support:              ${HAVE_NETMAP}
     PCAP   support:              ${have_pcap}
 

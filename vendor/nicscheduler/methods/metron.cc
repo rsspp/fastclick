@@ -1,7 +1,7 @@
 /**
  * Metron
  */
-#include "../../include/click/flowdispatcher.hh"
+#include <click/flowdispatcher.hh>
 
 String rewrite_id(String rule, int core) {
     int pos = rule.find_left("queue index");

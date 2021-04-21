@@ -23,6 +23,8 @@ DEPCFLAGS = @DEPCFLAGS@
 AR_CREATE = @AR@ @AR_CREATEFLAGS@
 RANLIB = @RANLIB@
 INSTALL = @INSTALL@
+CLICK_SHARED = @CLICK_SHARED@
+HAVE_FLOW_API = @HAVE_FLOW_API@
 mkinstalldirs = $(conf_auxdir)/mkinstalldirs
 
 CLICK_BUILDTOOL = $(top_builddir)/bin/click-buildtool
@@ -105,7 +107,7 @@ LINK = $(CCLD) $(CFLAGS) $(LDFLAGS) -o $@
 
 USE_DPDK = @USE_DPDK@
 ifeq ($(USE_DPDK),yes)
-ifeq ($(shell pkg-config --exists libdpdk && echo 1), 1)
+ifeq (@RTE_USE_PKGCONFIG@$(shell pkg-config --exists libdpdk && echo 1), 11)
 CFLAGS := $(CFLAGS) $(shell pkg-config --cflags libdpdk)
 CXXFLAGS := $(CFLAGS) $(shell pkg-config --cflags libdpdk)
 LDFLAGS := $(LDFLAGS) $(shell pkg-config --libs libdpdk) -Wl,-Bstatic $(shell pkg-config --static --libs libdpdk)
