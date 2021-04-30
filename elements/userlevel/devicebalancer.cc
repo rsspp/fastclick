@@ -30,8 +30,8 @@
 
 #include <string>
 
-#if RTE_VERSION >= RTE_VERSION_NUM(17,5,0,0)
-    #include <click/flowdispatcher.hh>
+#if HAVE_FLOW_API
+    #include <click/flowrulemanager.hh>
 #endif
 
 CLICK_DECLS

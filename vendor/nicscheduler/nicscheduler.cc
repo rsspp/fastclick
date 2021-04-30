@@ -90,4 +90,6 @@ MigrationListener::~MigrationListener() {
 #include "methods/rss.cc"
 #include "methods/rssrr.cc"
 #include "methods/rsspp.cc"
+#if HAVE_FLOW_API
 #include "methods/metron.cc"
+#endif

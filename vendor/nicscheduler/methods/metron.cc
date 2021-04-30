@@ -1,7 +1,7 @@
 /**
  * Metron
  */
-#include <click/flowdispatcher.hh>
+#include <click/flowrulemanager.hh>
 
 String rewrite_id(String rule, int core) {
     int pos = rule.find_left("queue index");
@@ -13,7 +13,7 @@ String rewrite_id(String rule, int core) {
 int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
     if (!_is_dpdk)
         return errh->error("Metron only works with DPDK");
-    FlowDispatcher *flow_dir = FlowDispatcher::get_flow_dispatcher(((DPDKDevice*)_fd)->port_id);
+    FlowRuleManager *flow_dir = FlowRuleManager::get_flow_rule_mgr(((DPDKDevice*)_fd)->port_id);
     assert(flow_dir);
 
     // Invoke Flow Dispatcher only if active
@@ -21,7 +21,7 @@ int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
         // There is a file with (user-defined) rules
         if (!_rules_file.empty()) {
             HashMap<uint32_t, String> rules_map;
-            const String rules_str = (const String) flow_dir->load_rules_from_file_to_string(_rules_file);
+            const String rules_str = (const String) flow_dir->flow_rules_from_file_to_string(_rules_file);
 
             if (rules_str.empty()) {
                 return errh->error("Failed to add rules due to empty input from file");
@@ -37,7 +37,7 @@ int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
                 rules_map.insert(i, rewrite_id(rule,i % startwith));
             }
 
-            int ret = flow_dir->update_rules(rules_map, true);
+            int ret = flow_dir->flow_rules_update(rules_map, true);
 
             if (ret < 0)
                 return errh->error("Could not install rules.");
@@ -54,7 +54,7 @@ int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
 
     load_tracker_initialize(errh);
 
-    auto cache = flow_dir->get_flow_cache();
+    auto cache = flow_dir->flow_rule_cache();
     if (!cache) {
         return errh->error("Flow dir is not initialized");
     }
@@ -66,7 +66,7 @@ int MethodMetron::initialize(ErrorHandler *errh, int startwith) {
 }
 
 void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
-    FlowDispatcher *flow_dir = FlowDispatcher::get_flow_dispatcher(((DPDKDevice*)_fd)->port_id);
+    FlowRuleManager *flow_dir = FlowRuleManager::get_flow_rule_mgr(((DPDKDevice*)_fd)->port_id);
     click_jiffies_t now = click_jiffies();
     std::vector<std::pair<int,float>> underloaded;
     std::vector<std::pair<int,float>> overloaded;
@@ -119,7 +119,7 @@ void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
 
         click_chatter("Deflating cpu phys core %d to %d", o, a_phys_id);
 
-        auto cache = flow_dir->get_flow_cache();
+        auto cache = flow_dir->flow_rule_cache();
         if (!cache) {
             click_chatter("Flow dir is not initialized");
             assert(false);
@@ -168,7 +168,7 @@ void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
   //      int status = flow_dir->flow_rules_delete(dlist.data(), dlist.size());
 
 //        click_chatter("Deleted %d/%d", status, dlist.size(), true);
-        int status = flow_dir->update_rules(nmap, true, a_phys_id);
+        int status = flow_dir->flow_rules_update(nmap, true, a_phys_id);
         click_chatter("Update %d", status);
 
     }
@@ -197,7 +197,7 @@ void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
         HashMap<uint32_t, String> * rmap;
 
         HashMap<uint32_t, String> nmap;
-        auto cache = flow_dir->get_flow_cache();
+        auto cache = flow_dir->flow_rule_cache();
 
         rmap = cache->rules_map_by_core_id(remove_i);
 //        click_chatter("Rmap %p", rmap);
@@ -214,7 +214,7 @@ void MethodMetron::rebalance(std::vector<std::pair<int,float>> load) {
             nmap.insert(rule_id, rewrite_id(rule, with_i));
             it++;
         }
-        int status = flow_dir->update_rules(nmap, true, with_i);
+        int status = flow_dir->flow_rules_update(nmap, true, with_i);
         if (status == 0)
             click_chatter("Failed to update rules");
 //        click_chatter("Update %d", status);

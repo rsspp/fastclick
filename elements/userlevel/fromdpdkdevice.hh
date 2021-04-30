@@ -5,6 +5,10 @@
 #include <click/notifier.hh>
 #include <click/task.hh>
 #include <click/dpdkdevice.hh>
+#if HAVE_FLOW_API
+#include <click/flowrulemanager.hh>
+#endif
+
 #include "queuedevice.hh"
 
 CLICK_DECLS
@@ -118,7 +122,9 @@ traffic using VLAN-based VMDq.
 
 =item PAUSE
 
-String. Set the device pause mode. "full" to enable pause frame for both RX and TX, "rx" or "tx" to set one of them, and "none" to disable pause frames. Do not set or choose "unset" to keep device current state/default.
+String. Set the device pause mode. "full" to enable pause frame for both
+RX and TX, "rx" or "tx" to set one of them, and "none" to disable pause frames.
+Do not set or choose "unset" to keep device current state/default.
 
 =item ALLOW_NONEXISTENT
 
@@ -225,6 +231,7 @@ Returns the device's link type (only fiber is currently supported).
 =h xstats read-only
 
 Returns a device's detailed packet and byte counters.
+If a parameter is given, only the matching counter will be returned.
 
 =h queue_count read-only
 
@@ -367,7 +374,7 @@ Upon success, the number of deleted flow rules is returned, otherwise an error i
 
 =h rules_isolate write-only
 
-Enables/Disables Flow Director's isolation mode.
+Enables/Disables Flow Rule Manager's isolation mode.
 Isolated mode guarantees that all ingress traffic comes from defined flow rules only (current and future).
 Usage:
     'rules_isolate 0' disables isolation.
@@ -411,24 +418,29 @@ public:
     FromDPDKDevice() CLICK_COLD;
     ~FromDPDKDevice() CLICK_COLD;
 
-    const char *class_name() const { return "FromDPDKDevice"; }
-    const char *port_count() const { return PORTS_0_1; }
-    const char *processing() const { return PUSH; }
+    const char *class_name() const override { return "FromDPDKDevice"; }
+    const char *port_count() const override { return PORTS_0_1; }
+    const char *processing() const override { return PUSH; }
     void* cast(const char* name) override;
 
-    int configure_phase() const {
+    int configure_phase() const override {
         return CONFIGURE_PHASE_PRIVILEGED - 5;
     }
-    bool can_live_reconfigure() const { return false; }
+    bool can_live_reconfigure() const override { return false; }
 
-    int configure(Vector<String> &, ErrorHandler *) CLICK_COLD;
-    int initialize(ErrorHandler *) CLICK_COLD;
-    void add_handlers() CLICK_COLD;
-    void cleanup(CleanupStage) CLICK_COLD;
-    void clear_buffers();
-    bool run_task(Task *);
-    void run_timer(Timer* t);
-    void selected(int fd, int mask);
+    int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
+    int initialize(ErrorHandler *) override CLICK_COLD;
+    void add_handlers() override CLICK_COLD;
+    void cleanup(CleanupStage) override CLICK_COLD;
+    bool run_task(Task *) override;
+#if HAVE_DPDK_INTERRUPT
+    void selected(int fd, int mask) override;
+#endif
+
+    bool is_active() { return _active;};       
+    void set_active(bool active) { _active = active; };
+    void run_timer(Timer*) override;
+    void clear_buffers() CLICK_COLD;
 
     ToDPDKDevice *find_output_element();
 
@@ -444,7 +456,7 @@ public:
         return _dev->get_eth_device();
     }
 
-private:
+protected:
     static int reset_load_handler(
         const String &, Element *, void *, ErrorHandler *
     ) CLICK_COLD;
@@ -473,6 +485,10 @@ private:
     };
     per_thread<FDState> _fdstate;
     bool _set_timestamp;
+    bool _tco;
+    bool _uco;
+    bool _ipco;
+    bool _clear;
 };
 
 CLICK_ENDDECLS

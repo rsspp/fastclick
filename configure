@@ -620,7 +620,8 @@ ac_includes_default="\
 # include <unistd.h>
 #endif"
 
-ac_subst_vars='LTLIBOBJS
+ac_subst_vars='EXTRA_TOOL_OBJS
+LTLIBOBJS
 provisions
 clickbuild_sbindir
 clickbuild_libdir
@@ -662,6 +663,7 @@ XML2CLICK
 PROPER_LIBS
 PROPER_INCLUDES
 HAVE_NETMAP_PACKET_POOL
+EXTRA_DRIVER_OBJS
 NETMAP_INCLUDES
 NUMA_INCLUDES
 PCAP_LIBS
@@ -677,8 +679,6 @@ DRIVERS
 POSSIBLE_DRIVERS
 HAVE_FLOW_API
 LINUXMODULE_2_6
-EXTRA_TOOL_OBJS
-EXTRA_DRIVER_OBJS
 SOCKET_LIBS
 BUILD_DL_LIBS
 BUILD_DL_LDFLAGS
@@ -720,6 +720,7 @@ PTHREAD_LIBS
 HAVE_BATCH
 AR_CREATEFLAGS
 STRIP
+READELF
 RANLIB
 OBJCOPY
 NM
@@ -816,6 +817,7 @@ enable_kqueue
 enable_dpdk
 enable_dpdk_pool
 enable_dpdk_packet
+enable_flow_api
 enable_zerocopy
 enable_linuxmodule
 enable_fixincludes
@@ -1543,6 +1545,8 @@ Optional Features:
     --enable-dpdk         use DPDK
     --enable-dpdk-pool    use DPDK buffer instead of standard Click buffer
     --enable-dpdk-packet  Click packets are DPDK packet
+      --enable-flow-api   Support for the HW flow classification API. Also
+                          needs DPDK>=20.02
     --disable-zerocopy    disable Zero Copy
   --disable-linuxmodule   disable Linux kernel driver
     --disable-fixincludes do not patch Linux kernel headers for C++
@@ -6368,6 +6372,98 @@ else
 fi
 
 if test -n "$ac_tool_prefix"; then
+  # Extract the first word of "${ac_tool_prefix}readelf", so it can be a program name with args.
+set dummy ${ac_tool_prefix}readelf; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_READELF+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$READELF"; then
+  ac_cv_prog_READELF="$READELF" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_READELF="${ac_tool_prefix}readelf"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+READELF=$ac_cv_prog_READELF
+if test -n "$READELF"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $READELF" >&5
+$as_echo "$READELF" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+fi
+if test -z "$ac_cv_prog_READELF"; then
+  ac_ct_READELF=$READELF
+  # Extract the first word of "readelf", so it can be a program name with args.
+set dummy readelf; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_ac_ct_READELF+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$ac_ct_READELF"; then
+  ac_cv_prog_ac_ct_READELF="$ac_ct_READELF" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_ac_ct_READELF="readelf"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+ac_ct_READELF=$ac_cv_prog_ac_ct_READELF
+if test -n "$ac_ct_READELF"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_ct_READELF" >&5
+$as_echo "$ac_ct_READELF" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+  if test "x$ac_ct_READELF" = x; then
+    READELF=":"
+  else
+    case $cross_compiling:$ac_tool_warned in
+yes:)
+{ $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
+$as_echo "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
+ac_tool_warned=yes ;;
+esac
+    READELF=$ac_ct_READELF
+  fi
+else
+  READELF="$ac_cv_prog_READELF"
+fi
+
+if test -n "$ac_tool_prefix"; then
   # Extract the first word of "${ac_tool_prefix}strip", so it can be a program name with args.
 set dummy ${ac_tool_prefix}strip; ac_word=$2
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
@@ -6466,6 +6562,11 @@ conf_auxdir='$(top_srcdir)'
 test -z "$AR_CREATEFLAGS" && AR_CREATEFLAGS=cru
 
 
+EXTRA_DRIVER_OBJS=
+EXTRA_TOOL_OBJS=
+INCLUDES_LLVM=
+LLVM_OBJS=
+LIBS_LLVM=
 
 
 
@@ -6481,7 +6582,7 @@ fi
 if test "${enable_user_multithread+set}" = set; then :
   enableval=$enable_user_multithread; :
 else
-  enable_user_multithread=no
+  enable_user_multithread=yes
 fi
 
 
@@ -7359,6 +7460,14 @@ if test "${enable_dpdk_packet+set}" = set; then :
   enableval=$enable_dpdk_packet; :
 else
   enable_dpdk_packet=no
+fi
+
+
+# Check whether --enable-flow-api was given.
+if test "${enable_flow_api+set}" = set; then :
+  enableval=$enable_flow_api; :
+else
+  enable_flow_api=no
 fi
 
 
@@ -9660,6 +9769,9 @@ if test "$enable_bound_port_transfer" = yes; then
 
 $as_echo "#define HAVE_BOUND_PORT_TRANSFER 1" >>confdefs.h
 
+  if test -z "${CXX##*clang*}" ; then
+      as_fn_error $? "--enable-bound-port-transfer does not work with Clang! A better solution is to use click-devirtualize in any case. Remove this option or use GCC (you probably have your CXX environment variable set to clang++)." "$LINENO" 5
+  fi
   CXXFLAGS="$CXXFLAGS -Wno-pmf-conversions"
 fi
 
@@ -10729,14 +10841,10 @@ _ACEOF
 
 
 
-EXTRA_DRIVER_OBJS=
-EXTRA_TOOL_OBJS=
 if test "x$enable_ip6" = xyes; then
     EXTRA_DRIVER_OBJS="ip6address.o ip6flowid.o ip6table.o $EXTRA_DRIVER_OBJS"
     EXTRA_TOOL_OBJS="ip6address.o $EXTRA_TOOL_OBJS"
 fi
-
-
 
 
 
@@ -14933,11 +15041,32 @@ if test "$ac_have_libbpf$ac_have_libbpf_h" = yesyes; then
     provisions="$provisions bpf"
 fi
 
-if test "x$enable_dpdk" = xyes; then
+if test "x$enable_dpdk" != "xno"; then
     provisions="$provisions dpdk"
     if test "$rte_ver_year" -ge 19; then
         provisions="$provisions dpdk19"
     fi
+    if test "$rte_ver_year" -ge 18; then
+        provisions="$provisions dpdk18"
+    fi
+    if test "$rte_ver_year" -ge 17; then
+        provisions="$provisions dpdk17"
+    fi
+fi
+
+if test "x$enable_dpdk_packet" = xyes; then
+    provisions="$provisions dpdk-packet"
+    packet_mode="DPDK rte_mbuf"
+else
+    if test "x$enable_dpdk_pool" = xyes; then
+        packet_mode="Click's Packet object with DPDK buffers in the pool"
+    else
+        packet_mode="Click's Packet object with any buffers"
+    fi
+fi
+
+if test "x$enable_dpdk_xchg" = xyes; then
+    provisions="$provisions dpdk-xchg"
 fi
 
 if test "x$enable_flow" = xyes; then
@@ -14950,8 +15079,8 @@ if test "x$enable_experimental" = xyes; then
     provisions="$provisions experimental"
 fi
 
-if test "x$enable_gtp" = xyes; then
-    provisions="$provisions gtp"
+if test "x$enable_tunnel" = xyes; then
+    provisions="$provisions tunnel"
 fi
 
 if test "x$have_hyperscan" = xyes; then
@@ -14966,10 +15095,6 @@ if test "x$enable_ip6" = xyes; then
     provisions="$provisions ip6"
 fi
 
-if test "x$enable_cpu_load" = xyes; then
-    provisions="$provisions load"
-fi
-
 if test "x$ac_cv_under_linux" = xyes; then
     provisions="$provisions linux"
 fi
@@ -14982,6 +15107,10 @@ if test $ac_have_linux_kernel = y; then
     elif test $linux_version_code -ge 132608 -a $linux_version_code -lt 132864; then
         provisions="$provisions linux_2_6"
     fi
+fi
+
+if test "x$enable_cpu_load" = xyes; then
+    provisions="$provisions load"
 fi
 
 if test "$ac_have_libmbdevio$ac_have_mbgdevio_h" = yesyes; then
@@ -15013,6 +15142,14 @@ if test "x$HAVE_PCAP" = xyes; then
     have_pcap=yes
 else
     have_pcap=no
+fi
+
+if test "x$have_pci" = xyes; then
+    provisions="$provisions pci"
+fi
+
+if test "x$have_llvm" = xyes; then
+    provisions="$provisions llvm"
 fi
 
 if test "x$have_re2" = xyes; then
@@ -16422,7 +16559,8 @@ Configuration Summary:
     C++   Compiler:              ${CXX}
 
           Batching:              ${enable_batch}
-              Flow:              ${enable_flow}
+    Flow Subsystem:              ${enable_flow}
+       HW Flow API:              ${have_flow_api}
 
     DPDK   support:              ${enable_dpdk}
            version:              ${rte_ver_year}.${rte_ver_month}
@@ -16436,7 +16574,8 @@ Configuration Summary:
     RE2    support:              ${have_re2}
     BPF    support:              ${have_libbpf}
     HTTPD  support:              ${have_httpd}
-    JSON   support:              ${have_json}
+    libpci support:              ${have_pci}
+    LLVM   support:              ${have_llvm}
 "
 
 if test "x$enable_cpu_load" != "xyes"; then

@@ -103,10 +103,14 @@ class String { public:
     inline String substring(const char *begin, const char *end) const;
     String substring(int pos, int len) const;
     inline String substring(int pos) const;
+    String trim() const;
     String trim_space() const;
     String trim_space_left() const;
     String replace(char from, char to) const;
     String replace(String from, String to) const;
+    String &erase(int start = 0, int len = -1);
+    inline void pop_back();
+    inline void clear();
 
     inline bool equals(const String &x) const;
     inline bool equals(const char *s, int len) const;
@@ -128,15 +132,23 @@ class String { public:
     // bool operator>(const String &, const String &);
     // bool operator>=(const String &, const String &);
     Vector<String> split(char c) const;
+    Vector<String> split(const String &delim) const;
 
     int find_left(char c, int start = 0) const;
     int find_left(const String &x, int start = 0) const;
-    int find_right(char c, int start = 0x7FFFFFFF) const;
+    int find_right(char c, int start = -1) const;
+    int find_first_of(const char *delim, int pos = 0) const;
+    int find_first_of(const String &delim, int pos = 0) const;
+    int find_first_not_of(const char *delim, int pos = 0) const;
+    int find_first_not_of(const String &delim, int pos = 0) const;
+    int find_last_of(const char delim, int pos = -1) const;
+    int find_last_not_of(const char *delim, int pos = -1) const;
 
     const char* search(String pattern);
 
     String lower() const;
     String upper() const;
+    String camel() const;
     String printable() const;
     String quoted_hex() const;
     String encode_json() const;

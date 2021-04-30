@@ -5,7 +5,7 @@
 
 #include <click/vector.hh>
 
-#include "elements/json/json.hh"
+#include <click/json.hh>
 #include "elements/userlevel/metron.hh"
 
 class ServiceChainManager {

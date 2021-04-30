@@ -2,11 +2,13 @@
 /*
  * string.{cc,hh} -- a String class with shared substrings
  * Eddie Kohler
+ * Extended by Georgios Katsikas
  *
  * Copyright (c) 1999-2000 Massachusetts Institute of Technology
  * Copyright (c) 2004-2007 Regents of the University of California
  * Copyright (c) 2008-2009 Meraki, Inc.
  * Copyright (c) 2012 Eddie Kohler
+ * Copyright (c) 2019 KTH Royal Institute of Technology
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -417,7 +419,11 @@ String::append_uninitialized(int len)
         && ((dirty = _r.memo->dirty), _r.memo->capacity > dirty + len)) {
         char *real_dirty = _r.memo->real_data + dirty;
         if (real_dirty == _r.data + _r.length
-            && atomic_uint32_t::compare_swap(_r.memo->dirty, dirty, dirty + len) == dirty) {
+#if ! CLICK_ATOMIC_COMPARE_SWAP
+	&& atomic_uint32_t::compare_and_swap(_r.memo->dirty, dirty, dirty + len)) {
+#else
+	&& atomic_uint32_t::compare_swap(_r.memo->dirty, dirty, dirty + len) == dirty) {
+#endif
             _r.length += len;
             assert(_r.memo->dirty < _r.memo->capacity);
 #if HAVE_STRING_PROFILING
@@ -643,9 +649,54 @@ String::split(char c) const
     return res;
 }
 
+/** @brief Split a string using multiple input characters as delimiters.
+ * The outcome of the split is a vector of tokens.
+ * Each character in @a delims is used as an atomic delimiter, which means
+ * that when 2 or more delimiters are given, then new tokens are created
+ * based on any occassion of any of these delimiters.
+ * E.g., delims = " ;"; string = "aaa bb;cc" --> vector("aaa", "bb", "cc")
+ * @param delims string with delimiters
+ *
+ * Return a vector of tokens or an empty vector if no such delimiters exist. */
+Vector<String>
+String::split(const String &delims) const
+{
+    Vector<String> res;
+    if (empty() || delims.empty()) {
+        return res;
+    }
+
+    // Find the start of the first token
+    int start = find_first_not_of(delims);
+    // ... and the first delimiter
+    int end = find_first_of(delims, start);
+    // Cannot tokenize
+    if ((start == -1) || (end == -1)) {
+        return res;
+    }
+
+    while (start != -1) {
+        // End of string
+        if (end == -1) {
+            start = -1;
+            continue;
+        }
+
+        // Store this token
+        res.push_back(substring(start, end - start));
+
+        // Shift the indices for the next token
+        end = find_first_of(delims, start);
+        start = find_first_not_of(delims, end);
+    }
+
+    return res;
+}
+
+
 /** @brief Search for a substring in a string.
  * @param x substring to search for
- * @param start initial search position
+ * @param start initial search position (defaults to 0)
  *
  * Return the index of the leftmost occurence of the substring @a str,
  * starting at index @a start and working up to the end of the string.
@@ -673,22 +724,128 @@ String::find_left(const String &x, int start) const
     return -1;
 }
 
-/** @brief Search for a character in a string.
+/** @brief Search for a character in a string, starting from right to left.
  * @param c character to search for
  * @param start initial search position
  *
  * Return the index of the rightmost occurence of the character @a c,
  * starting at index @a start and working back to the beginning of the
- * string.  Returns -1 if @a c is not found.  @a start may start beyond
+ * string.  Returns -1 if @a c is not found. @a start may start beyond
  * the end of the string. */
 int
 String::find_right(char c, int start) const
 {
-    if (start >= _r.length)
+    if ((start < 0) || (start >= _r.length))
         start = _r.length - 1;
     for (int i = start; i >= 0; i--)
         if (_r.data[i] == c)
             return i;
+    return -1;
+}
+
+/** @brief Search for the first occurence of any character of the input substring in a string.
+ * @param delim substring to search for
+ * @param pos initial search position (defaults to 0)
+ *
+ * Return the index of the leftmost occurence of any character present both in the substring and this string,
+ * starting at index @a pos and working up to the end of the string.
+ * Returns -1 if none of @a delim characters is found. */
+int
+String::find_first_of(const char *delim, int pos) const
+{
+    if ((pos < 0) || (pos >= _r.length))
+        pos = 0;
+    const int len = static_cast<int>(strcspn(c_str() + pos, delim));
+    if ((len + pos) == _r.length) {
+        return -1;
+    } else {
+        return len + pos;
+    }
+}
+
+int
+String::find_first_of(const String &delim, int pos) const
+{
+    return find_first_of(delim.c_str(), pos);
+}
+
+/** @brief Search for the first occurence of any character in this string, not present in the input substring.
+ * @param delim substring to search for
+ * @param pos initial search position (defaults to 0)
+ *
+ * Return the index of the leftmost occurence of any character present in this string but not in the input substring,
+ * starting at index @a pos and working up to the end of the string.
+ * Returns -1 if all characters in this string are also present in the input substring @a delim. */
+int
+String::find_first_not_of(const char *delim, int pos) const
+{
+    if ((pos < 0) || (pos > _r.length - 1))
+        pos = 0;
+    const int len = static_cast<int>(strspn(c_str() + pos, delim));
+    if ((len + pos) == _r.length) {
+        return -1;
+    } else {
+        return len + pos;
+    }
+}
+
+int
+String::find_first_not_of(const String &delim, int pos) const
+{
+    return find_first_not_of(delim.c_str(), pos);
+}
+
+/** @brief Search for the last occurence of character @a delim in this string.
+ * @param delim character to search for
+ * @param pos initial search position (defaults to -1, which implies end of the string)
+ *
+ * Return the index of the rightmost occurence of character @a delim in this string,
+ * starting at index @a pos and working back to the beginning of the string.
+ * Returns -1 if @a delim is not found. */
+int
+String::find_last_of(const char delim, int pos) const
+{
+    int start = 0;
+    if ((pos < 0) || (pos >= _r.length)) {
+        start = _r.length - 1;
+    } else {
+        start = pos;
+    }
+
+    // Traverse from right
+    for (int i = start; i >= 0; i--) {
+        if (delim == _r.data[i]) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+/** @brief Search for the last occurence of any character in this string, not present in the input substring.
+ * @param delim substring to search for
+ * @param pos initial search position (defaults to -1, which implies end of the string)
+ *
+ * Return the index of the rightmost occurence of any character present in this string but not in the input substring,
+ * starting at index @a pos and working back to the beginning of the string.
+ * Returns -1 if all characters in this string are also present in the input substring @a delim. */
+int
+String::find_last_not_of(const char *delim, int pos) const
+{
+    int start = 0;
+    if ((pos < 0) || (pos >= _r.length)) {
+        start = _r.length - 1;
+    } else {
+        start = pos;
+    }
+
+    // Traverse from right
+    for (int i = start; i >= 0; i--) {
+        if (!strchr(delim, _r.data[i])) {
+            return i;
+        }
+    }
+
     return -1;
 }
 
@@ -741,6 +898,29 @@ String::upper() const
         if (_r.data[i] >= 'a' && _r.data[i] <= 'z')
             return hard_upper(*this, i);
     return *this;
+}
+
+/** @brief Return a camel-cased version of this string.
+
+    Translates the first ASCII character 'a' through 'z' of each word into
+    their uppercase equivalents. */
+String
+String::camel() const
+{
+    String new_s(data(), length());
+    char *x = const_cast<char *>(new_s.data());
+    bool new_word_begins = true;
+    for (int i = 0; i < new_s.length(); i++) {
+        if ((x[i] >= 'a') && (x[i] <= 'z') && new_word_begins) {
+            x[i] = toupper((unsigned char) x[i]);
+            new_word_begins = false;
+        }
+
+        if ((x[i] == ' ') || (x[i] == '_')){
+            new_word_begins = true;
+        }
+    }
+    return new_s;
 }
 
 static String
@@ -888,6 +1068,47 @@ String::replace(String from, String to) const
         newStr = newStr.substring(0,found) + to + newStr.substring(found + fromlen);
     }
     return newStr;
+}
+
+/** @brief Remove a range of characters between @a start and start + @a len.
+ * @param start initial position of character to remove (defaults to 0)
+ * @param len number of characters to remove (If -1, len becomes string's length)
+ *
+ * Return the substring left after the removal of the requested characters. */
+String &
+String::erase(int start, int len)
+{
+    // Check initial position
+    start = ((start >= 0) && (start < _r.length)) ? start : -2;
+    if (start < 0) {
+        return *this;
+    }
+
+    // Check length
+    if ((len == -1) && (_r.length > 0)) {
+        len = _r.length - start;
+    } else if ((len == -1) && (_r.length == 0)) {
+        return *this;
+    // Typical cases
+    } else {
+        len = ((len >= 0) && (len < _r.length)) ? len : -2;
+    }
+
+    // Don't touch the string
+    if (len < 0) {
+        return *this;
+    }
+
+    // Remove just enough
+    if (_r.length - start < len) {
+        len = _r.length - start;
+    }
+
+    // Ready to remove
+    memmove((char *) c_str() + start, (char *) c_str() + start + len, strlen(c_str()) - len);
+    _r.length -= len;
+
+    return *this;
 }
 
 /** @brief Return a hex-quoted version of the string.

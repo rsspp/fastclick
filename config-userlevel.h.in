@@ -68,8 +68,11 @@
 /* Define if you have the <execinfo.h> header file. */
 #undef HAVE_EXECINFO_H
 
-/* Define if you have the flow function. */
+/* Define if you have the flow subsystem. */
 #undef HAVE_FLOW
+
+/* Define if you have the HW Flow API. */
+#undef HAVE_FLOW_API
 
 /* Define if you have the ffs function. */
 #undef HAVE_FFS
@@ -235,6 +238,9 @@
 /* Define if a Click user-level driver might run multiple threads. */
 #undef HAVE_USER_MULTITHREAD
 
+/* Define if we are using builtins atomics or Click implementation. */
+#undef HAVE_ATOMIC_BUILTINS
+
 /* Define if Zero-copy is enabled. */
 #undef HAVE_ZEROCOPY
 
@@ -340,7 +346,7 @@ typedef unsigned long uintptr_t;
 #endif
 
 /* Define if mmap is allowed. */
-#if defined(HAVE_SYS_MMAN_H) && defined(HAVE_MMAP)
+#if defined(HAVE_SYS_MMAN_H) && defined(HAVE_MMAP) && !CLICK_PACKET_USE_DPDK
 # define ALLOW_MMAP 1
 #endif
 

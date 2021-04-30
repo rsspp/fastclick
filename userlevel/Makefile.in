@@ -70,7 +70,7 @@ GENERIC_OBJS = string.o straccum.o nameinfo.o \
 	packet.o packetbatch.o \
 	error.o timestamp.o glue.o task.o timer.o atomic.o fromfile.o gaprate.o \
 	element.o batchelement.o tcphelper.o \
-	allocator.o \
+	allocator.o json.o \
 	confparse.o args.o variableenv.o lexer.o elemfilter.o routervisitor.o \
 	routerthread.o router.o master.o timerset.o selectset.o handlercall.o notifier.o \
 	integers.o md5.o crc32.o in_cksum.o iptable.o \
@@ -112,15 +112,18 @@ CFLAGS := $(CFLAGS) $(shell pkg-config --cflags libdpdk)
 CXXFLAGS := $(CFLAGS) $(shell pkg-config --cflags libdpdk)
 LDFLAGS := $(LDFLAGS) $(shell pkg-config --libs libdpdk) -Wl,-Bstatic $(shell pkg-config --static --libs libdpdk)
 else
-RTE_SDK = @RTE_SDK@
-RTE_TARGET = @RTE_TARGET@
-RTE_VER_MAJOR = @RTE_VER_MAJOR@
-RTE_VER_MINOR = @RTE_VER_MINOR@
-RTE_VER_YEAR = @RTE_VER_YEAR@
-RTE_VER_MONTH = @RTE_VER_MONTH@
-include dpdk.mk
+	RTE_SDK = @RTE_SDK@
+	RTE_TARGET = @RTE_TARGET@
+	RTE_VER_MAJOR = @RTE_VER_MAJOR@
+	RTE_VER_MINOR = @RTE_VER_MINOR@
+	RTE_VER_YEAR = @RTE_VER_YEAR@
+	RTE_VER_MONTH = @RTE_VER_MONTH@
+	include dpdk.mk
+	EXTRA_DRIVER_OBJS := dpdkdevice.o  $(EXTRA_DRIVER_OBJS)
+	ifeq ($(shell [ ${HAVE_FLOW_API} -eq 1 ] && echo true),true)
+		EXTRA_DRIVER_OBJS := flowrulemanager.o flowrulecache.o flowruleparser.o servicechain.o $(EXTRA_DRIVER_OBJS)
+	endif
 endif
-EXTRA_DRIVER_OBJS := dpdkdevice.o flowdispatcher.o flowdispatcherparser.o servicechain.o $(EXTRA_DRIVER_OBJS)
 endif
 
 ifndef MINDRIVER
@@ -149,7 +152,7 @@ ifneq ($(MAKECMDGOALS),clean)
 endif
 
 # At of after DPDK 17.05, compile against an additional library librte_parse (flow dispatcher)
-ifeq ($(shell [ -n "$(RTE_VER_YEAR)" ] && ( ( [ "$(RTE_VER_YEAR)" -ge 17 ] && [ "$(RTE_VER_MONTH)" -ge 5 ] ) || [ $(RTE_VER_YEAR) -ge 18 ] ) && echo true),true)
+ifeq ($(shell [ -n "$(RTE_VER_YEAR)" ] && ( ( [ "$(RTE_VER_YEAR)" -ge 17 ] && [ "$(RTE_VER_MONTH)" -ge 5 ] ) || [ $(RTE_VER_YEAR) -ge 18 ] ) && echo true)${HAVE_FLOW_API},true1)
 ddeps: Makefile librte_parse.a libclick.a $(OBJS)
 
 $(DRIVER): ${PARSE_PATH}.sentinel ddeps
@@ -157,7 +160,7 @@ $(DRIVER): ${PARSE_PATH}.sentinel ddeps
 	@-mkdir -p ../bin; rm -f ../bin/$@; ln -s ../userlevel/$@ ../bin/$@
 else
 $(DRIVER): Makefile libclick.a $(OBJS)
-	$(call cxxlink,$(DL_LDFLAGS) $(OBJS) libclick.a $(LIBS) $(DPDK_LIBS),LINK)
+	$(call cxxlink,$(DL_LDFLAGS) $(OBJS) libclick.a $(LIBS),LINK)
 	@-mkdir -p ../bin; rm -f ../bin/$@; ln -s ../userlevel/$@ ../bin/$@
 endif
 
