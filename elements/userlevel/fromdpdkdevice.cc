@@ -31,7 +31,7 @@
 #include "tscclock.hh"
 #include "todpdkdevice.hh"
 #if HAVE_JSON
-#include "../json/json.hh"
+#include <click/json.hh>
 #endif
 
 #if HAVE_FLOW_API
