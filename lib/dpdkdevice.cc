@@ -60,13 +60,13 @@ static std::vector<unsigned> dpdk_eth_get_rss_reta(EthernetDevice* eth) {
 }
 
 DPDKDevice::DPDKDevice(portid_t id) : info(), DPDKEthernetDevice() {
-	set_rss_reta = &dpdk_eth_set_rss_reta;
+    set_rss_reta = &dpdk_eth_set_rss_reta;
 	get_rss_reta = &dpdk_eth_get_rss_reta;
 	get_rss_reta_size = &dpdk_eth_get_rss_reta_size;
     assert(get_rss_reta_size);
     this->port_id = id;
     #if HAVE_FLOW_API
-        if (port_id >= 0)
+    if (port_id != (portid_t)-1)
             initialize_flow_rule_manager(port_id, ErrorHandler::default_handler());
     #endif
 }
